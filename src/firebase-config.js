@@ -3,7 +3,7 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDlXMqfI-ayMW8V3HRyF03BfjHuvXRtWbk",
+  apiKey: "AIzaSyDPMIStQ-khREz4_GVkVX3CKqkxUGZo5YM",
   authDomain: "k-avatar.firebaseapp.com",
   projectId: "k-avatar",
   storageBucket: "k-avatar.firebasestorage.app",
