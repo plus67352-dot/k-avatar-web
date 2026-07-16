@@ -1,21 +1,19 @@
-// src/firebase-config.js
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
-// 이 객체 내부의 값은 Firebase 콘솔의 '프로젝트 설정'에서 복사해 오세요.
+// 🚨 이전 프로젝트의 정지된 키를 지우고, k-avatar 새 프로젝트 키로 교체했습니다.
 const firebaseConfig = {
-  apiKey: "AIzaSyDjczh0nB1jziDsoeHIdrGndbu5UBH9HHk",
-  authDomain: "my-digital-twin-5561f.firebaseapp.com",
-  projectId: "my-digital-twin-5561f",
-  storageBucket: "my-digital-twin-5561f.firebasestorage.app",
-  messagingSenderId: "456372825198",
-  appId: "1:456372825198:web:510ae8c902427330894a7f",
-  measurementId: "G-84G06KTVD3"
+  apiKey: "AIzaSyDlXMqfI-ayMW8V3HRyF03BfjHuvXRtWbk",
+  authDomain: "k-avatar.firebaseapp.com",
+  projectId: "k-avatar",
+  storageBucket: "k-avatar.firebasestorage.app",
+  messagingSenderId: "18276956342",
+  appId: "1:18276956342:web:881cfb73f1ec32fb9c0e17",
+  measurementId: "G-HK140RMSCK"
 };
 
-// 초기화
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// 구글 로그인을 위한 변수 export
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+export const db = getFirestore(app);
