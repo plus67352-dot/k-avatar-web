@@ -1,21 +1,18 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth"; // GoogleAuthProvider 추가
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyDlXMqfI-ayMW8V3HRyF03BfjHuvXRtWbk",
+  authDomain: "k-avatar.firebaseapp.com",
+  projectId: "k-avatar",
+  storageBucket: "k-avatar.firebasestorage.app",
+  messagingSenderId: "18276956342",
+  appId: "1:18276956342:web:878c92e064b896299c0e17",
+  measurementId: "G-BJ9TBREGBL"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-
-// 구글 로그인을 위한 핵심 부품 (이게 있어야 작동합니다!)
 export const googleProvider = new GoogleAuthProvider();
