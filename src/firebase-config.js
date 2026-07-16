@@ -1,8 +1,8 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// 🚨 이전 프로젝트의 정지된 키를 지우고, k-avatar 새 프로젝트 키로 교체했습니다.
+// 새 프로젝트 K-avatar 키값
 const firebaseConfig = {
   apiKey: "AIzaSyDlXMqfI-ayMW8V3HRyF03BfjHuvXRtWbk",
   authDomain: "k-avatar.firebaseapp.com",
@@ -17,3 +17,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// 🚨 제가 빼먹었던 구글 로그인 제공자 부품 추가!
+export const googleProvider = new GoogleAuthProvider();
