@@ -14,32 +14,30 @@ import {
   getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged,
   GoogleAuthProvider, signInWithPopup, signOut 
 } from 'firebase/auth';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.58";
+const APP_VERSION = "F77.11.58 (K-Avatar Edition)";
 
 // 🚨 [보안 패치] Gemini API 키는 프론트엔드에서 완전히 제거되었습니다.
-// 이제 백엔드(Firebase Cloud Functions)에서만 API 키를 안전하게 관리합니다.
+// 이제 백엔드(Vercel API)에서만 API 키를 안전하게 관리합니다.
 
-// 👇 파이어베이스 설정
-// (주의: 캔버스 에디터 환경 호환성을 위해 임시 문자열로 대체해 두었습니다. 
-// 로컬 환경으로 복사하여 사용하실 때는 주석에 적힌 import.meta.env 코드로 변경하여 사용하세요!)
+// 👇 새로운 무명(임시) 구글 계정으로 만든 Firebase 프로젝트의 키값을 여기에 넣으세요!
 const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY", // 실제 사용 시: import.meta.env.VITE_FIREBASE_API_KEY
-  authDomain: "YOUR_FIREBASE_AUTH_DOMAIN", // 실제 사용 시: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN
-  projectId: "YOUR_FIREBASE_PROJECT_ID", // 실제 사용 시: import.meta.env.VITE_FIREBASE_PROJECT_ID
-  // ... 나머지 환경변수 동일하게 세팅
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY, 
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app); // 백엔드 통신용 Functions 인스턴스 초기화
 const googleProvider = new GoogleAuthProvider();
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'digital-twin-master-v1';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'k-avatar-master-v1';
 
 
 // ▼ 금칙어 리스트 및 검사 함수 ▼
@@ -52,7 +50,7 @@ const containsBannedWord = (text) => {
 const NAME_MAP = {
   "빌 게이츠": "빌 게이츠", "일론 머스크": "일론 머스크", "래리 페이지": "래리 페이지", "젠슨 황": "젠슨 황", "마크 저커버그": "마크 저커버그", "제프 베이조스": "제프 베이조스",
   "도널드 트럼프": "도널드 트럼프", "이재명": "이재명", "시진핑": "시진핑", "블라디미르 푸틴": "블라디미르 푸틴", "다카이치 사나에": "다카이치 사나에", "빈 살만": "빈 살만",
-  "싯다르타 무케르지": "싯다르타 무케르지", "제임스 앨리슨": "제임스 앨리슨", "칼 준": "칼 준", "앤드류 와일": "앤드류 와일", "마이클 그레거": "마크 하이먼",
+  "싯다르타 무케르지": "싯다르타 무케르지", "제임스 앨리슨": "제임스 앨리슨", "칼 준": "칼 준", "앤드류 와일": "앤드류 와일", "마이클 그레거": "마이클 그레거", "마크 하이먼": "마크 하이먼",
   "워런 버핏": "워런 버핏", "레이 달리오": "레이 달리오", "마이클 버리": "마이클 버리", "나심 탈레브": "나심 탈레브", "손정의": "손정의", "피터 틸": "피터 틸",
   "성철스님": "성철스님", "프란치스코 교황": "프란치스코 교황", "달라이 라마": "달라이 라마", "스와미 비베카난다": "스와미 비베카난다", "C.S. 루이스": "C.S. 루이스", "루미": "루미",
   "한강": "한강", "유발 하라리": "유발 하라리", "테드 창": "테드 창", "무라카미 하루키": "무라카미 하루키", "스티븐 킹": "스티븐 킹", "알랭 드 보통": "알랭 드 보통"
@@ -109,7 +107,6 @@ const RAINBOW_THEMES = [
 ];
 
 const SUPER_MASTERS_AVAILABLE = MASTER_CONFIG.map(m => m.name);
-// 💡 Super 및 Ultra 등급 동시 생성
 const MASTER_SYSTEM_MASTERS = SUPER_MASTERS_AVAILABLE.flatMap((name, i) => [
   { 
     ownerUid: `system_super_${i}`, 
@@ -195,16 +192,26 @@ const FirebaseServices = {
     } catch (e) { return false; }
   },
   
+  // 🚨 [새로운 Vercel API 프록시 호출]
   callGeminiEngine: async (payload, engineConfig, retries = 5, delay = 1000) => {
-    // 🚨 [보안 패치] 프론트엔드에서 직접 구글 API를 호출하지 않고, 우리의 안전한 백엔드(Cloud Functions)를 호출합니다.
     try {
-      const callGeminiProxy = httpsCallable(functions, 'callGeminiProxy');
-      const response = await callGeminiProxy({ payload, engineConfig });
-      return response.data; // 백엔드 서버에서 안전하게 받아온 결과 반환
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ payload, engineConfig })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
+      
     } catch (e) {
-      // Functions 에러 코드 핸들링
-      const isClientError = e.code === 'not-found' || e.code === 'invalid-argument';
-      if (retries > 0 && !isClientError) { 
+      if (retries > 0) { 
           await new Promise(res => setTimeout(res, delay)); 
           return FirebaseServices.callGeminiEngine(payload, engineConfig, retries - 1, delay * 2); 
       }
@@ -460,7 +467,7 @@ const IntroView = ({ onSelectMode }) => {
           명예의 전당 (Avatar 검색)
         </button>
       </div>
-      <p className="absolute bottom-10 text-[10px] text-slate-500 font-bold uppercase tracking-widest">© meta-DNA.com</p>
+      <p className="absolute bottom-10 text-[10px] text-slate-500 font-bold uppercase tracking-widest">© k-avatar.kr</p>
     </div>
   );
 };
@@ -473,7 +480,7 @@ const B2BEnterpriseView = ({ user, engineConfig, onBackToIntro, getDisplayNodes,
   const [selectedAvatar, setSelectedAvatar] = useState(null);
   const [avatarNodes, setAvatarNodes] = useState([]);
   const [avatarQna, setAvatarQna] = useState([]);
-  const [avatarTone, setAvatarTone] = useState('humorous'); // 'humorous' 또는 'polite'
+  const [avatarTone, setAvatarTone] = useState('humorous'); 
   
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
@@ -617,7 +624,7 @@ const B2BEnterpriseView = ({ user, engineConfig, onBackToIntro, getDisplayNodes,
                   </button>
               </div>
               <div className="p-6 text-center shrink-0 border-t border-white/10">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Powered by Human OS Enterprise</span>
+                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Powered by k-avatar.kr</span>
               </div>
           </div>
         )}
@@ -665,7 +672,7 @@ const B2BEnterpriseView = ({ user, engineConfig, onBackToIntro, getDisplayNodes,
           <div className="flex flex-col h-full bg-white z-30 overflow-y-auto relative custom-scrollbar">
               <div className="bg-white/80 backdrop-blur-md text-slate-900 p-4 pt-10 sm:pt-4 flex items-center justify-between shrink-0 border-b border-slate-100 sticky top-0 z-40">
                   <button onClick={() => setB2BStep('search')} className="p-1 rounded-full hover:bg-slate-100 transition-colors"><ArrowLeft size={24} className="text-slate-600" /></button>
-                  <div className="flex items-center gap-1.5 text-blue-600"><Globe size={16} /><span className="text-[10px] font-black tracking-tighter">meta-DNA.com</span></div>
+                  <div className="flex items-center gap-1.5 text-blue-600"><Globe size={16} /><span className="text-[10px] font-black tracking-tighter">k-avatar.kr</span></div>
                   <button className="p-1 rounded-full hover:bg-slate-100 transition-colors"><Share2 size={20} className="text-slate-400" /></button>
               </div>
 
@@ -719,7 +726,7 @@ const B2BEnterpriseView = ({ user, engineConfig, onBackToIntro, getDisplayNodes,
                       )) : <div className="p-6 text-center text-slate-400 font-bold text-xs border-2 border-dashed rounded-2xl">공개된 대화가 없습니다.</div>}
                   </div>
               </div>
-              <footer className="py-10 bg-slate-100 text-center"><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">© Human OS Enterprise Framework</p></footer>
+              <footer className="py-10 bg-slate-100 text-center"><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">© k-avatar.kr Framework</p></footer>
           </div>
         )}
 
@@ -823,7 +830,6 @@ const HeaderSection = ({ ctx, totalKP }) => {
           </div>
         </div>
       </div>
-      {/* 👇 여기에 조건문을 추가하여 감싸줍니다 👇 */}
       {activeTab === 'training' && (
         <div className="flex gap-1 overflow-x-auto no-scrollbar py-3 mt-1 max-w-full font-black text-center justify-center">
           {domains.slice(0,7).map((d, i) => {
@@ -837,7 +843,6 @@ const HeaderSection = ({ ctx, totalKP }) => {
           })}
         </div>
       )}
-      {/* 👆 여기까지 👆 */}
     </header>
   );
 };
@@ -867,10 +872,9 @@ const CommitteeView = ({ ctx }) => {
                  </>
               )}
            </div>
-           {/* ▼ pt-3 이 추가되어 상단이 잘리지 않습니다 ▼ */}
            <div className="flex gap-2 overflow-x-auto no-scrollbar mt-4 pt-3">
               {activeDomainIdx === 6 && (
-                <div onClick={() => { setPreviewExpert({ name: profile.userName, slot: 7, theme: 'Council Chairman', userPhoto: profile.userPhoto }); setExpertGenomeSlot(0); }} className="flex flex-col items-center gap-1 shrink-0 p-2 bg-amber-50 rounded-xl shadow-md border-2 border-amber-200 min-w-[70px] relative cursor-pointer active:scale-95">
+                <div onClick={() => { setPreviewExpert({ name: profile.userName, slot: 7, theme: 'Council Chairman' }); setExpertGenomeSlot(0); }} className="flex flex-col items-center gap-1 shrink-0 p-2 bg-amber-50 rounded-xl shadow-md border-2 border-amber-200 min-w-[70px] relative cursor-pointer active:scale-95">
                    <div className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[6px] font-black px-1.5 py-0.5 rounded-full shadow-sm">의장</div>
                    <img src={formatters.getAvatarUrl(profile.userName, profile.userPhoto)} className="w-8 h-8 mx-auto rounded-full object-cover border-2 border-white shadow-sm" alt="chairman" />
                    <span className="text-[7px] font-black text-amber-700 block mt-1">My Avatar</span>
@@ -919,7 +923,6 @@ const CommitteeView = ({ ctx }) => {
              <div className={`p-4 rounded-2xl shadow-sm relative break-words ${m.role === 'user' ? 'max-w-[62%] bg-slate-900 text-white rounded-tr-none shadow-md' : 'max-w-[95%] bg-slate-50 text-slate-800 rounded-tl-none border border-blue-100 shadow-sm'}`}>
                <div className="leading-[1.6] whitespace-pre-wrap font-bold" style={{ fontSize: `${profile?.chatFontSize || 10}px` }}>{String(m.content)}</div>
                
-               {/* 💡 여기에 토큰 사용량 UI 추가 (AI 답변일 때만 & 데이터가 있을 때만 표시) */}
                {m.role === 'assistant' && m.tokenUsage && (
                  <div className="mt-2 flex items-center gap-2 text-[8.5px] font-black text-slate-400 bg-white/60 px-2 py-1 rounded-lg w-fit border border-slate-200/50">
                    <span className="text-blue-500">IN: {m.tokenUsage.promptTokenCount}</span>
@@ -1213,7 +1216,7 @@ const SystemSettingsView = ({ ctx, totalKP }) => {
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5"><span className="text-[7px] text-slate-400 font-bold ml-1 uppercase tracking-tight">Display Name</span><input value={profile.userName} onChange={(e)=>setProfile({...profile, userName: e.target.value})} className="bg-slate-50 p-4 rounded-2xl border-none font-bold text-sm w-full shadow-inner" placeholder="이름" /></div>
-            <div className="space-y-1.5"><div className="flex justify-between items-center pr-1"><span className="text-[7px] text-slate-400 font-bold ml-1 uppercase tracking-tight">Global Alias (@ID)</span>{profile.userAlias && (<span className="text-[7px] text-blue-600 font-black animate-in fade-in slide-in-from-right-1">( https://meta-DNA.com/@{String(profile.userAlias)} )</span>)}</div><input value={profile.userAlias} onChange={(e)=>setProfile({...profile, userAlias: e.target.value})} className="bg-slate-50 p-4 rounded-2xl border-none font-bold text-sm w-full shadow-inner" placeholder="별칭 입력" /></div>
+            <div className="space-y-1.5"><div className="flex justify-between items-center pr-1"><span className="text-[7px] text-slate-400 font-bold ml-1 uppercase tracking-tight">Global Alias (@ID)</span>{profile.userAlias && (<span className="text-[7px] text-blue-600 font-black animate-in fade-in slide-in-from-right-1">( https://k-avatar.kr/@{String(profile.userAlias)} )</span>)}</div><input value={profile.userAlias} onChange={(e)=>setProfile({...profile, userAlias: e.target.value})} className="bg-slate-50 p-4 rounded-2xl border-none font-bold text-sm w-full shadow-inner" placeholder="별칭 입력" /></div>
           </div>
           <div className="space-y-1.5"><span className="text-[7px] text-slate-400 font-bold ml-1 uppercase flex items-center gap-1 tracking-tight"><ImageIcon size={8}/> Avatar Facial Image (URL)</span><input value={profile.userPhoto || ''} onChange={(e)=>setProfile({...profile, userPhoto: e.target.value})} className="bg-slate-50 p-4 rounded-2xl border-none font-bold text-sm w-full shadow-inner" placeholder="https://example.com/photo.png" /></div>
           <div className="space-y-1.5"><span className="text-[7px] text-slate-400 font-bold ml-1 uppercase flex items-center gap-1 tracking-tight"><AlignLeft size={8}/> Avatar Introduction (Max 3 lines)</span><textarea value={profile.userIntro || ''} onChange={(e)=>setProfile({...profile, userIntro: e.target.value.substring(0, 500)})} className="bg-slate-50 p-4 rounded-2xl border-none font-bold text-sm w-full min-h-[80px] resize-none shadow-inner" placeholder="소개글을 입력하세요." /></div>
@@ -1325,7 +1328,6 @@ const HumanOSApp = () => {
   const [pendingTransactions, setPendingTransactions] = useState({}); 
   const [ideaSpices, setIdeaSpices] = useState({ mckinsey: false, ir: false, redteam: false, qna: false });
 
-  // 💡 [신규 추가] 각 위원회 방에서 제외된 위원들을 관리하는 상태
   const [activeMembers, setActiveMembers] = useState([]);
 
   const fileInputRef = useRef(null); 
@@ -1341,7 +1343,6 @@ const HumanOSApp = () => {
 
   const deductAC = useCallback(async (amount = 10) => {
     if (!user) return false;
-    // 👇 추가된 부분: 익명 유저는 AC 사용 불가 (각인/구매 차단)
     if (user.isAnonymous) { 
       triggerToast("구글 로그인이 필요합니다."); 
       return false; 
@@ -1507,7 +1508,6 @@ const HumanOSApp = () => {
     const sName = formatters.standardizeName(safeName);
     const baseName = sName.replace(' (Super)', '').replace(' (Ultra)', '').replace(' (Hyper)', '').replace(' (Star)', '').trim();
     
-    // 시스템 등급 여부 확인
     const isUltraSubscribed = subscribedAvatars.some(s => s.userName === `${baseName} (Ultra)`);
     const isSuperSubscribed = subscribedAvatars.some(s => s.userName === `${baseName} (Super)`);
     
@@ -1545,7 +1545,6 @@ const HumanOSApp = () => {
     else if (isSuper && dbNodes.length === 0) resultNodes = resultNodes.filter(n => !n.tier || Number(n.tier) <= 3);
     else if (dbNodes.length === 0) resultNodes = resultNodes.filter(n => !n.tier || Number(n.tier) === 1);
     
-    // 노드 증폭 로직
     if (isUltra && resultNodes.length <= 15) {
         resultNodes = [
             ...resultNodes.map(c => ({...c, hashtag: String(c.hashtag) + '_Core'})),
@@ -1567,7 +1566,6 @@ const HumanOSApp = () => {
 
   const handleDeepDive = async (name) => {
     if (!name) return; 
-    // 👇 추가
     if (user && user.isAnonymous) { triggerToast("구글 로그인이 필요합니다."); return; }
     setIsTyping(true); triggerToast(`${String(formatters.standardizeName(name))} 분석 중...`);
     const targetName = String(formatters.standardizeName(name));
@@ -1580,7 +1578,6 @@ const HumanOSApp = () => {
 
   const handleExpertSendMessage = async () => {
     if (!expertChatInput.trim() || !user || !expertChatTarget) return;
-    // 👇 추가
     if (user && user.isAnonymous) { triggerToast("구글 로그인이 필요합니다."); return; }
     const targetName = String(formatters.standardizeName(expertChatTarget.name));
     const input = expertChatInput; setExpertChatInput(''); setIsTyping(true);
@@ -1602,7 +1599,6 @@ const HumanOSApp = () => {
     const currentInput = forcedPrompt || String(chatInput);
     if (!currentInput.trim() || (!user && viewMode !== 'landing')) return;
 
-    // 👇 추가된 부분: 랜딩 모드가 아닌데 익명 유저라면 차단
     if (viewMode !== 'landing' && user && user.isAnonymous) {
       triggerToast("구글 로그인이 필요합니다.");
       return;
@@ -1641,7 +1637,6 @@ const HumanOSApp = () => {
       if (viewMode === 'landing') {
         K_POOL = landingKnowledge.map(k => `[Fragment]: ${k.content}`).join("\n\n");
         
-        // 에러를 유발하는 avatarTone 부분을 지우고 아래처럼 고정합니다.
         const toneInstruction = "매우 정중하고 전문적인 컨설턴트/비즈니스 톤으로, 격식 있는 존댓말(하십시오체)을 사용하여 신뢰감 있게 답하라.";
         
         systemInstructionText = `너는 '${landingProfile?.userName}'의 디지털 아바타다. [어투 지시사항]: ${toneInstruction}\n각인지식(${K_POOL.slice(0, 150000)})을 최우선 전제로 삼되 부족한 부분은 모델 지능 활용. 답변 시 '([node 숫자])' 표기 금지, **강조**만 사용.`;
@@ -1726,10 +1721,9 @@ const HumanOSApp = () => {
       }
       const res = await FirebaseServices.callGeminiEngine({ contents: [{ parts: [{ text: currentInput }] }], systemInstruction: { parts: [{ text: systemInstructionText }] } }, engineConfig);
       const content = String(res.candidates?.[0]?.content?.parts?.[0]?.text || "응답 지연.");
-      const tokenUsage = res.usageMetadata || null; // 💡 토큰 사용량 추출
+      const tokenUsage = res.usageMetadata || null; 
       const asstMsgId = Date.now() + 1;
 
-      // 💡 [수정됨] 강력한 자동 각인 코드 (모든 유저 허용 및 에러 추적)
       if (viewMode !== 'landing' && user) { 
          const currentCoins = Number(profile?.userCoins) || 0;
          const currentMasterName = profile?.userName || '사용자';
@@ -1763,10 +1757,8 @@ const HumanOSApp = () => {
       } else if (user) {
         const roomCol = collection(db, 'artifacts', appId, 'users', user.uid, 'roomMessages');
         await addDoc(roomCol, { slotIdx: activeDomainIdx, role: 'user', content: currentInput, timestamp: userMsgId });
-        // 💡 파이어베이스에 토큰량도 같이 저장
         await addDoc(roomCol, { slotIdx: activeDomainIdx, role: 'assistant', content, timestamp: asstMsgId, tokenUsage }); 
       }
-      // 💡 화면 상태 업데이트에도 토큰량 추가
       setMessages(prev => { const slotData = prev[slotKey] || { board: [] }; return { ...prev, [slotKey]: { ...slotData, board: [...(slotData.board || []), { role: 'assistant', content, id: asstMsgId, tokenUsage }] } }; });
     } catch (e) { 
       triggerToast("오류 발생"); 
@@ -1861,7 +1853,7 @@ const HumanOSApp = () => {
     return () => unsub();
   }, [user]);
 
-  useEffect(() => { document.title = "Human OS meta-DNA.com"; }, []);
+  useEffect(() => { document.title = "K-Avatar System"; }, []);
   useEffect(() => { chatTopRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping, activeDomainIdx]);
 
   useEffect(() => {
@@ -1969,14 +1961,14 @@ const HumanOSApp = () => {
   if (viewMode === 'landing') {
     return (
       <div className="flex flex-col h-[100dvh] w-full bg-white font-sans text-slate-900 text-[10px] overflow-y-auto overflow-x-hidden custom-scrollbar" style={{ overflowAnchor: 'none' }}>
-        <nav className="sticky top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b px-6 py-4 flex justify-between items-center shrink-0"><div className="flex items-center gap-2"><Globe className="text-blue-600" size={18} /><span className="text-lg font-black tracking-tighter text-slate-900">meta-DNA.com<span className="text-blue-500">/@{String(landingProfile?.userAlias || "owner")}</span></span></div><button onClick={() => setViewMode('main')} className="text-[10px] font-black text-slate-400 hover:text-blue-600 flex items-center gap-1 transition-all">OWNER LOGIN <ExternalLink size={10}/></button></nav>
+        <nav className="sticky top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b px-6 py-4 flex justify-between items-center shrink-0"><div className="flex items-center gap-2"><Globe className="text-blue-600" size={18} /><span className="text-lg font-black tracking-tighter text-slate-900">k-avatar.kr<span className="text-blue-500">/@{String(landingProfile?.userAlias || "owner")}</span></span></div><button onClick={() => setViewMode('main')} className="text-[10px] font-black text-slate-400 hover:text-blue-600 flex items-center gap-1 transition-all">OWNER LOGIN <ExternalLink size={10}/></button></nav>
         
         <section className="relative py-12 pb-12 flex flex-col items-center px-6 text-center shrink-0">
           <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_50%_50%,rgba(227,242,253,1)_0%,rgba(255,255,255,1)_100%)]"></div>
           
           <div className="flex flex-col items-center w-full">
             <div className="relative flex items-center gap-6 animate-in zoom-in duration-500">
-              <div className="relative group cursor-pointer" onClick={() => { setPreviewExpert({ name: landingProfile?.userName, slot: 7, theme: 'Digital Persona', userPhoto: landingProfile?.userPhoto }); setExpertGenomeSlot(0); }}>
+              <div className="relative group cursor-pointer" onClick={() => { setPreviewExpert({ name: landingProfile?.userName, slot: 7, theme: 'Digital Persona' }); setExpertGenomeSlot(0); }}>
                 <div className="w-40 h-40 rounded-full border-4 border-white shadow-2xl overflow-hidden">
                   <img src={formatters.getAvatarUrl(landingProfile?.userName, landingProfile?.userPhoto)} className="w-full h-full object-cover" alt="p" />
                 </div>
@@ -2131,7 +2123,7 @@ const HumanOSApp = () => {
           <div className="bg-white w-full max-sm rounded-[3rem] shadow-2xl overflow-hidden border-t-8 border-blue-600 flex flex-col max-h-[90vh] animate-in zoom-in-95">
             <div className="p-8 flex flex-col items-center shrink-0">
                <div className={`w-24 h-24 rounded-full border-4 p-1 mb-4 shadow-md overflow-hidden bg-slate-50 ${previewExpert.name && previewExpert.name.includes("(Ultra)") ? 'border-purple-400' : previewExpert.name && previewExpert.name.includes("(Super)") ? 'border-amber-400' : 'border-blue-50'}`}>
-                  <img src={formatters.getAvatarUrl(previewExpert.name, previewExpert.userPhoto)} className="w-full h-full object-cover" alt="p" />
+                  <img src={formatters.getAvatarUrl(previewExpert.name, (previewExpert.slot === 7 ? (viewMode === 'landing' ? landingProfile?.userPhoto : profile?.userPhoto) : (previewExpert.userPhoto || null)))} className="w-full h-full object-cover" alt="p" />
                </div>
                <h3 className="text-xl font-black text-slate-900">{String(formatters.standardizeName(previewExpert.name))}</h3>
                <div className="mt-4 flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-full border border-slate-100">
@@ -2169,7 +2161,7 @@ const HumanOSApp = () => {
           <div className="bg-white w-full h-[90vh] rounded-t-[3rem] shadow-2xl flex flex-col border-t-4 border-blue-600 overflow-hidden animate-in slide-in-from-bottom">
             <header className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
                <div className="flex items-center gap-3">
-                  <img src={formatters.getAvatarUrl(expertChatTarget.name, expertChatTarget.userPhoto)} className="w-12 h-12 rounded-full border-2 border-blue-100 object-cover" alt="e" />
+                  <img src={formatters.getAvatarUrl(expertChatTarget.name, (expertChatTarget.slot === 7 ? (viewMode === 'landing' ? landingProfile?.userPhoto : profile?.userPhoto) : (expertChatTarget.userPhoto || null)))} className="w-12 h-12 rounded-full border-2 border-blue-100 object-cover" alt="e" />
                   <div className="text-left"><h3 className="text-lg font-black text-slate-900">{String(formatters.standardizeName(expertChatTarget.name))}</h3></div>
                </div>
                <button onClick={() => setExpertChatTarget(null)} className="p-2 bg-slate-200 rounded-full text-slate-500"><X size={24} /></button>
@@ -2222,7 +2214,7 @@ const HumanOSApp = () => {
             </header>
             <div className="flex-1 overflow-y-auto p-8 space-y-6 text-left bg-white custom-scrollbar">
               <p className="text-[10px] text-slate-500 leading-relaxed font-bold">
-                본 약관은 Human OS (이하 "플랫폼")가 제공하는 디지털 아바타 생성 및 지능 위원회 서비스의 이용과 관련하여, 회사와 사용자 간의 권리, 의무, 지적재산권(IP) 합의 및 책임 사항을 규정합니다.
+                본 약관은 k-avatar.kr (이하 "플랫폼")가 제공하는 디지털 아바타 생성 및 지능 위원회 서비스의 이용과 관련하여, 회사와 사용자 간의 권리, 의무, 지적재산권(IP) 합의 및 책임 사항을 규정합니다.
               </p>
               
               <div className="space-y-2">
