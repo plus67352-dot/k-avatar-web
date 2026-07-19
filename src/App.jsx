@@ -18,7 +18,7 @@ import {
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.59 (K-Avatar Edition)";
+const APP_VERSION = "F77.11.58 (K-Avatar Edition)";
 
 // 🚨 [보안 패치] Gemini API 키는 프론트엔드에서 완전히 제거되었습니다.
 // 이제 백엔드(Vercel API)에서만 API 키를 안전하게 관리합니다.
@@ -192,8 +192,8 @@ const FirebaseServices = {
     } catch (e) { return false; }
   },
   
-  // 🚨 [새로운 Vercel API 프록시 호출]
   callGeminiEngine: async (payload, engineConfig, retries = 5, delay = 1000) => {
+    // 🚨 [수정됨] Firebase Cloud Functions 대신 Vercel 백엔드 API(/api/gemini)를 호출합니다.
     try {
       const response = await fetch('/api/gemini', {
         method: 'POST',
@@ -202,14 +202,14 @@ const FirebaseServices = {
         },
         body: JSON.stringify({ payload, engineConfig })
       });
-      
+
       if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `서버 에러 상태 코드: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      return data;
-      
+      return data; 
     } catch (e) {
       if (retries > 0) { 
           await new Promise(res => setTimeout(res, delay)); 
@@ -219,7 +219,6 @@ const FirebaseServices = {
     }
   }
 };
-
 
 // ============================================================================
 // 3. CUSTOM HOOKS LAYER
