@@ -18,7 +18,7 @@ import {
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.58 (K-Avatar Edition)";
+const APP_VERSION = "F77.11.60 (K-Avatar Edition)";
 
 // 🚨 [보안 패치] Gemini API 키는 프론트엔드에서 완전히 제거되었습니다.
 // 이제 백엔드(Vercel API)에서만 API 키를 안전하게 관리합니다.
@@ -191,27 +191,43 @@ const FirebaseServices = {
       return true;
     } catch (e) { return false; }
   },
-  
+
+  // 🚨 [보안 패치 완료] 프론트엔드에서 파이어베이스 인증 토큰을 뽑아 Vercel 백엔드로 전달합니다.
   callGeminiEngine: async (payload, engineConfig, retries = 5, delay = 1000) => {
-    // 🚨 [수정됨] Firebase Cloud Functions 대신 Vercel 백엔드 API(/api/gemini)를 호출합니다.
     try {
+      // 1. 현재 접속 중인 사용자의 Firebase 보안 토큰(JWT) 발급
+      const currentUser = auth.currentUser;
+      let token = "";
+      if (currentUser) {
+          // 토큰을 뽑아냅니다. (익명 로그인 유저도 정상적인 토큰이 발급됩니다)
+          token = await currentUser.getIdToken();
+      }
+
+      // 2. Vercel 백엔드에 요청 시 Header에 토큰 동봉
       const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // 🔥 이 줄이 백엔드 수문장을 통과하는 마법의 열쇠입니다.
         },
         body: JSON.stringify({ payload, engineConfig })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        
+        // 429 에러(할당량 초과)일 경우 친절한 메시지로 변경 (이전 코드 유지)
+        if (response.status === 429) {
+           throw new Error("Gemini Pro 모델의 무료 제공량(1분당 2회)을 초과했습니다. 1분 후 다시 시도해주세요.");
+        }
+        
+        // 권한 에러(401) 등 처리
         throw new Error(errorData.error || `서버 에러 상태 코드: ${response.status}`);
       }
 
-      const data = await response.json();
-      return data; 
+      return await response.json();
     } catch (e) {
-      if (retries > 0) { 
+      if (retries > 0 && !e.message.includes("제공량") && !e.message.includes("Unauthorized")) { 
           await new Promise(res => setTimeout(res, delay)); 
           return FirebaseServices.callGeminiEngine(payload, engineConfig, retries - 1, delay * 2); 
       }
@@ -220,6 +236,7 @@ const FirebaseServices = {
   }
 };
 
+ 
 // ============================================================================
 // 3. CUSTOM HOOKS LAYER
 // ============================================================================
