@@ -18,7 +18,7 @@ import {
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.62 (K-Avatar Final)";
+const APP_VERSION = "F77.11.58 (K-Avatar Edition)";
 
 // 🚨 [보안 패치] Gemini API 키는 프론트엔드에서 완전히 제거되었습니다.
 // 이제 백엔드(Vercel API)에서만 API 키를 안전하게 관리합니다.
@@ -183,7 +183,6 @@ const formatters = {
   }
 };
 
-// ... existing code ...
 const FirebaseServices = {
   deleteRoomMessage: async (docId, userId) => {
     if (!userId) return false;
@@ -192,55 +191,27 @@ const FirebaseServices = {
       return true;
     } catch (e) { return false; }
   },
-
-  // 🚨 [보안 패치 완료] 프론트엔드에서 파이어베이스 인증 토큰을 뽑아 Vercel 백엔드로 전달합니다.
+  
   callGeminiEngine: async (payload, engineConfig, retries = 5, delay = 1000) => {
+    // 🚨 [수정됨] Firebase Cloud Functions 대신 Vercel 백엔드 API(/api/gemini)를 호출합니다.
     try {
-      // 1. 현재 접속 중인 사용자의 Firebase 보안 토큰(JWT) 발급
-      // currentUser가 null일 수 있으므로 (초기화 지연), auth.currentUser를 바로 쓰지 않고
-      // 확실하게 토큰을 받아오기 위해 프로미스를 사용합니다.
-      const token = await new Promise((resolve, reject) => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-          unsubscribe(); // 한 번만 확인하고 리스너 해제
-          if (user) {
-            try {
-              // 강제로 최신 토큰을 가져옵니다.
-              const idToken = await user.getIdToken(true); 
-              resolve(idToken);
-            } catch (err) {
-              reject(err);
-            }
-          } else {
-            reject(new Error("로그인이 필요합니다. (User is null)"));
-          }
-        }, reject);
-      });
-
-      // 2. Vercel 백엔드에 요청 시 Header에 토큰 동봉
       const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // 🔥 이 줄이 백엔드 수문장을 통과하는 마법의 열쇠입니다.
         },
         body: JSON.stringify({ payload, engineConfig })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        
-        // 429 에러(할당량 초과)일 경우 친절한 메시지로 변경 (이전 코드 유지)
-        if (response.status === 429) {
-           throw new Error("Gemini Pro 모델의 무료 제공량(1분당 2회)을 초과했습니다. 1분 후 다시 시도해주세요.");
-        }
-        
-        // 권한 에러(401) 등 처리
         throw new Error(errorData.error || `서버 에러 상태 코드: ${response.status}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      return data; 
     } catch (e) {
-      if (retries > 0 && !e.message.includes("제공량") && !e.message.includes("Unauthorized") && !e.message.includes("로그인이 필요합니다")) { 
+      if (retries > 0) { 
           await new Promise(res => setTimeout(res, delay)); 
           return FirebaseServices.callGeminiEngine(payload, engineConfig, retries - 1, delay * 2); 
       }
@@ -249,7 +220,6 @@ const FirebaseServices = {
   }
 };
 
- 
 // ============================================================================
 // 3. CUSTOM HOOKS LAYER
 // ============================================================================
