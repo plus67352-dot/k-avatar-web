@@ -16,6 +16,7 @@ export default async function handler(req, res) {
   const firebaseApiKey = process.env.VITE_FIREBASE_API_KEY; 
 
   if (!firebaseApiKey) {
+     console.error("VITE_FIREBASE_API_KEY is not set in Vercel.");
      return res.status(500).json({ error: 'Server Auth Configuration Error: 서버 키가 설정되지 않았습니다.' });
   }
 
@@ -29,9 +30,13 @@ export default async function handler(req, res) {
     });
 
     if (!verifyResponse.ok) {
+       console.error("Firebase token verification failed. Status:", verifyResponse.status);
+       const errText = await verifyResponse.text();
+       console.error("Firebase verification error details:", errText);
        return res.status(401).json({ error: 'Unauthorized: 유효하지 않거나 만료된 입장권입니다. 해커의 접근을 차단합니다.' });
     }
   } catch (error) {
+    console.error("Fetch to identitytoolkit failed:", error);
     return res.status(500).json({ error: 'Authentication server connection error: 인증 서버 통신 오류' });
   }
 
