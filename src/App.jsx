@@ -266,7 +266,7 @@ const useFirebaseSubscriptions = (user, viewMode, activeDomainIdx, targetLanding
   const [knowledgeList, setKnowledgeList] = useState([]);
   const [messages, setMessages] = useState({}); 
   
-  const [engineConfig, setEngineConfig] = useState({ model: "gemini-3.1-flash-lite", version: "v1beta" });
+  const [engineConfig, setEngineConfig] = useState({ model: "gemini-3.6-flash", version: "v1beta" });
 
   const [currentAgenda, setCurrentAgenda] = useState('');
   const [myLandingQnA, setMyLandingQnA] = useState([]);
@@ -947,7 +947,7 @@ const CommitteeView = ({ ctx }) => {
       <div className="fixed bottom-20 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm z-[50]"><div className="max-w-5xl mx-auto flex items-center gap-2 bg-white p-1 rounded-full shadow-xl border h-[42px] px-2 border-blue-100 font-black text-slate-900">
       <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="토론 안건 입력..." className="flex-1 px-4 text-[13px] outline-none bg-transparent" disabled={isTyping} />
       <span className="text-[9px] font-black tracking-tighter uppercase mr-2 text-amber-500/70 border border-amber-500/30 px-2 py-0.5 rounded-md bg-amber-50/50">
-        {ctx.state.engineConfig.model.includes('flash') ? '3.1 FLASH' : '3.1 PRO'}
+        {ctx.state.engineConfig.model.includes('flash') ? '3.6 FLASH' : '3.1 PRO'}
       </span>
       <button onClick={()=>handleSendMessage()} className="bg-slate-900 text-white p-2.5 rounded-full active:scale-90 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed" disabled={isTyping}><ArrowRight size={16} /></button></div></div>
     </div>
@@ -1226,7 +1226,7 @@ const SystemSettingsView = ({ ctx, totalKP }) => {
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
         <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-2"><Zap size={14} className="text-blue-500" /> Intelligence Engine Core</label>
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={()=>setEngineConfig({model:"gemini-3.1-flash-lite",version:"v1beta"})} className={`py-4 rounded-2xl font-black text-[10px] transition-all ${engineConfig.model.includes('3.1-flash') ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>3.1 Flash (Q&A당 1AC 차감)</button>
+          <button onClick={()=>setEngineConfig({model:"gemini-3.6-flash",version:"v1beta"})} className={`py-4 rounded-2xl font-black text-[10px] transition-all ${engineConfig.model.includes('3.1-flash') ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>3.6 Flash (Q&A당 1AC 차감)</button>
           <button onClick={()=>setEngineConfig({model:"gemini-3.1-pro-preview",version:"v1beta"})} className={`py-4 rounded-2xl font-black text-[10px] transition-all ${engineConfig.model.includes('3.1') ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>3.1 Pro (Q&A당 5AC 차감)</button>          
         </div>
       </div>
@@ -1430,7 +1430,7 @@ const HumanOSApp = () => {
       batch.set(aliasDocRef, { ownerUid: user.uid, timestamp: Date.now() });
       const initialProfile = { userName: user.displayName || '신규 마스터', userCoins: 1000, userAlias: cleanAlias, userIntro: 'AI이 거대화에 맞서 Human OS로 재탄생한 meta-DNA 마스터입니다.', userPhoto: user.photoURL || '', answerCount: 0 };
       const userRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile');
-      batch.set(userRef, { profile: initialProfile, engineConfig: { model: "gemini-3.1-flash-lite", version: "v1beta" } }, { merge: true });
+      batch.set(userRef, { profile: initialProfile, engineConfig: { model: "gemini-3.6-flash", version: "v1beta" } }, { merge: true });
       await batch.commit(); setProfile(initialProfile); setShowOnboardingModal(false); triggerToast("마스터 임명 완료!");
     } catch (e) { triggerToast("처리 중 오류 발생"); } finally { setIsOnboardingLoading(false); }
   };
