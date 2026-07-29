@@ -1563,6 +1563,7 @@ const HumanOSApp = () => {
     return resultNodes;
   }, [knowledgeList, landingKnowledge, landingProfile, viewMode, subscribedAvatars, masterIntelSet]);
 
+// ... existing code ...
   const handleDeepDive = async (name) => {
     if (!name) return; 
     if (user && user.isAnonymous) { triggerToast("구글 로그인이 필요합니다."); return; }
@@ -1588,11 +1589,15 @@ const HumanOSApp = () => {
         systemInstruction: { parts: [{ text: `너는 오직 ${targetName} 위원 본인이다. [하이브리드 추론 가이드]: 각인지식(${expertK})을 최우선 전제로 삼되 부족한 부분은 보완하라. 답변 시 '([node 숫자])' 형태의 표기는 절대 금지하며, 강조할 내용은 **강조** 문법만 사용하라.` }] } 
       }, engineConfig);
       const content = String(res.candidates?.[0]?.content?.parts?.[0]?.text || "연결 지연.");
-      setMessages(prev => { const slotData = prev[activeDomainIdx] || {}; const history = slotData[targetName] || []; return { ...prev, [activeDomainIdx]: { ...slotData, [targetName]: [...history, { role: 'assistant', content: content, id: Date.now()+1 }] } }; });
+      
+      const tokenUsage = res.usageMetadata || null; // 💡 누락되었던 데이터 추출 로직 추가
+      
+      setMessages(prev => { const slotData = prev[activeDomainIdx] || {}; const history = slotData[targetName] || []; return { ...prev, [activeDomainIdx]: { ...slotData, [targetName]: [...history, { role: 'assistant', content: content, id: Date.now()+1, tokenUsage }] } }; }); // 💡 맨 끝에 tokenUsage 저장
     } catch (e) {
       setMessages(prev => { const slotData = prev[activeDomainIdx] || {}; const history = slotData[targetName] || []; return { ...prev, [activeDomainIdx]: { ...slotData, [targetName]: [...history, { role: 'system', content: `API 오류: ${e.message}`, id: Date.now() }] } }; });
     } finally { setIsTyping(false); }
   };
+
 
   const handleSendMessage = async (forcedPrompt = null) => {
     const currentInput = forcedPrompt || String(chatInput);
@@ -2172,6 +2177,17 @@ const HumanOSApp = () => {
                  <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} w-full animate-in slide-in-from-top-2`}>
                    <div className={`p-4 rounded-2xl shadow-md relative break-words ${m.role === 'user' ? 'max-w-[70%] bg-slate-900 text-white rounded-tr-none' : 'max-w-[85%] bg-blue-50 text-slate-800 rounded-tl-none border border-blue-100'}`}>
                      <div className="text-[10px] leading-[1.6] whitespace-pre-wrap font-bold">{String(m.content)}</div>
+
+{/* 💡 1:1 채팅 토큰 사용량 UI 추가 */}
+                     {m.role === 'assistant' && m.tokenUsage && (
+                       <div className="mt-2 flex items-center gap-2 text-[8.5px] font-black text-slate-400 bg-white/60 px-2 py-1 rounded-lg w-fit border border-slate-200/50">
+                         <span className="text-blue-500">IN: {m.tokenUsage.promptTokenCount}</span>
+                         <span className="text-emerald-500">OUT: {m.tokenUsage.candidatesTokenCount}</span>
+                         <span className="text-slate-300 ml-1">TOTAL: {m.tokenUsage.totalTokenCount}</span>
+                       </div>
+                     )}
+
+
                    </div>
                  </div>
                ))}
