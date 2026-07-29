@@ -191,27 +191,51 @@ const FirebaseServices = {
       return true;
     } catch (e) { return false; }
   },
-  
+
+  // 🚨 [보안 패치 완료] 프론트엔드에서 파이어베이스 인증 토큰과 시크릿 암호를 Vercel 백엔드로 전달합니다.
   callGeminiEngine: async (payload, engineConfig, retries = 5, delay = 1000) => {
-    // 🚨 [수정됨] Firebase Cloud Functions 대신 Vercel 백엔드 API(/api/gemini)를 호출합니다.
     try {
+      // 1. 현재 접속 중인 사용자의 Firebase 보안 토큰(JWT) 발급 대기 로직
+      const token = await new Promise((resolve, reject) => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+          unsubscribe(); // 한 번만 확인하고 리스너 해제
+          if (user) {
+            try {
+              const idToken = await user.getIdToken(true); 
+              resolve(idToken);
+            } catch (err) {
+              reject(err);
+            }
+          } else {
+            reject(new Error("로그인이 필요합니다. (User is null)"));
+          }
+        }, reject);
+      });
+
+      // 2. Vercel 백엔드에 요청 시 Header에 토큰과 '시크릿 암호' 동봉
       const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, 
+          'X-K-Avatar-Secret': 'demo-secure-key-777' // 🔥 해커의 Postman 공격을 막아내는 비밀 암호
         },
         body: JSON.stringify({ payload, engineConfig })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        
+        if (response.status === 429) {
+           throw new Error("Gemini Pro 모델의 무료 제공량(1분당 2회)을 초과했습니다. 1분 후 다시 시도해주세요.");
+        }
+        
         throw new Error(errorData.error || `서버 에러 상태 코드: ${response.status}`);
       }
 
-      const data = await response.json();
-      return data; 
+      return await response.json();
     } catch (e) {
-      if (retries > 0) { 
+      if (retries > 0 && !e.message.includes("제공량") && !e.message.includes("Unauthorized") && !e.message.includes("로그인이 필요합니다")) { 
           await new Promise(res => setTimeout(res, delay)); 
           return FirebaseServices.callGeminiEngine(payload, engineConfig, retries - 1, delay * 2); 
       }
