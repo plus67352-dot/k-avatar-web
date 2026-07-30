@@ -18,7 +18,7 @@ import {
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.58 (K-Avatar Edition)";
+const APP_VERSION = "F77.11.60 (K-Avatar Edition)";
 
 // 🚨 [보안 패치] Gemini API 키는 프론트엔드에서 완전히 제거되었습니다.
 // 이제 백엔드(Vercel API)에서만 API 키를 안전하게 관리합니다.
@@ -1419,23 +1419,34 @@ const HumanOSApp = () => {
     }
   };
 
+// 🚨 1. 결제 요청 함수 보안 패치 (URL 파라미터 조작 방지)
   const handleChargeAC = async (acAmount, krwAmount) => {
     if (!user) { triggerToast("로그인이 필요합니다."); return; }
     try {
       const TossPayments = await loadTossPayments();
-      const clientKey = 'test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq'; 
+      // 👇 대표님의 클라이언트 키(test_ck_...)가 정확히 들어갔습니다.
+      const clientKey = 'test_ck_P9BRQmyarYGvbN2nWL5W3J07KzLN'; 
       const tossPayments = TossPayments(clientKey);
       const orderId = `order_${Date.now()}_${user.uid.substring(0,5)}`;
+      
+      // ✅ 해커가 조작할 수 없도록 현재 주소만 successUrl로 넘깁니다.
+      // (토스 서버가 알아서 진짜 결제 정보인 orderId, paymentKey, amount를 주소에 붙여서 돌려줍니다)
+      // 우리가 충전해야 할 AC 양만 몰래 acAmount 파라미터로 넘겨둡니다.
       const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('payment', 'success');
-      currentUrl.searchParams.set('amount', acAmount);
+      currentUrl.searchParams.set('acAmount', acAmount);
       const successUrl = currentUrl.toString();
+      
+      currentUrl.searchParams.delete('acAmount');
       currentUrl.searchParams.set('payment', 'fail');
       const failUrl = currentUrl.toString();
 
       await tossPayments.requestPayment('카드', {
-        amount: krwAmount, orderId: orderId, orderName: `Human OS - ${acAmount.toLocaleString()} AC 충전`,
-        customerName: profile.userName, successUrl: successUrl, failUrl: failUrl,
+        amount: krwAmount, 
+        orderId: orderId, 
+        orderName: `Human OS - ${acAmount.toLocaleString()} AC 충전`,
+        customerName: profile.userName, 
+        successUrl: successUrl, 
+        failUrl: failUrl,
       });
     } catch (error) { triggerToast("결제 모듈 로드 실패."); }
   };
@@ -1853,20 +1864,57 @@ const HumanOSApp = () => {
     utils: { getDisplayNodes }
   };
 
+// 🚨 2. 결제 완료 후 승인 요청 로직 패치 (프론트가 직접 올리지 않고 백엔드로 검증 요청)
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const paymentStatus = urlParams.get('payment');
-    const amountParam = urlParams.get('amount');
-    if (paymentStatus === 'success' && amountParam && user) {
-      const chargeAmount = Number(amountParam);
-      const batch = writeBatch(db);
-      const userRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile');
-      batch.set(userRef, { profile: { userCoins: increment(chargeAmount) } }, { merge: true });
-      batch.commit().then(() => {
-        triggerToast(`${chargeAmount.toLocaleString()} AC 결제 및 충전 완료!`);
-        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-        window.history.replaceState({path: cleanUrl}, '', cleanUrl);
-      });
+    const processPayment = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentKey = urlParams.get('paymentKey');
+      const orderId = urlParams.get('orderId');
+      const amount = urlParams.get('amount');     // 토스에서 실제로 결제된 원화 금액
+      const acAmount = urlParams.get('acAmount'); // 프론트에서 넘겨뒀던 충전할 AC 코인
+      const paymentStatus = urlParams.get('payment');
+
+      // 결제 실패 처리
+      if (paymentStatus === 'fail') {
+         triggerToast("결제가 취소되었거나 실패했습니다.");
+         const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+         window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+         return;
+      }
+
+      // 🚨 토스 결제가 완료되어 필수 파라미터 3개가 모두 돌아왔을 때만 백엔드로 검증 요청
+      if (paymentKey && orderId && amount && acAmount && user) {
+        try {
+          triggerToast("결제 내역을 안전하게 검증 중입니다...");
+
+          // 🚨 Vercel 백엔드(/api/verify-payment)로 결제 검증 및 충전 요청 전송
+          const response = await fetch('/api/verify-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              paymentKey, orderId, amount, acAmount, uid: user.uid, appId
+            })
+          });
+
+          const data = await response.json();
+
+          if (response.ok && data.success) {
+            triggerToast(`${Number(acAmount).toLocaleString()} AC 안전 결제 및 충전 완료!`);
+          } else {
+            triggerToast(`결제 실패: ${data.error}`);
+          }
+        } catch (error) {
+          triggerToast("네트워크 오류로 결제 검증에 실패했습니다.");
+        } finally {
+          // 보안 및 깔끔함을 위해 주소창에 노출된 결제 파라미터들을 모두 지워버립니다.
+          const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+          window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+        }
+      }
+    };
+
+    if (user) {
+      processPayment();
     }
   }, [user]);
 
@@ -1875,6 +1923,7 @@ const HumanOSApp = () => {
       setIsAvatarRegistered(false);
       return;
     }
+
     const unsub = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'registry', user.uid), (docSnap) => {
       setIsAvatarRegistered(docSnap.exists());
     }, (error) => console.error("Avatar registry check error:", error));
