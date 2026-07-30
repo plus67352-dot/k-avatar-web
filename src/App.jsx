@@ -18,7 +18,7 @@ import {
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.62 (K-Avatar Special Edition)";
+const APP_VERSION = "F77.11.63 (K-Avatar Special Edition)";
 
 // 👇 환경 변수 적용
 const firebaseConfig = {
@@ -218,16 +218,21 @@ const FirebaseServices = {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const textResponse = await response.text();
+        let errorData = {};
+        try {
+          errorData = JSON.parse(textResponse);
+        } catch (e) {
+          throw new Error(`백엔드 서버 에러(Vercel): ${textResponse.substring(0, 100)}`);
+        }
         if (response.status === 429) {
            throw new Error("Gemini Pro 모델의 무료 제공량(1분당 2회)을 초과했습니다. 1분 후 다시 시도해주세요.");
         }
         throw new Error(errorData.error || `서버 에러 상태 코드: ${response.status}`);
       }
-
       return await response.json();
     } catch (e) {
-      if (retries > 0 && !e.message.includes("제공량") && !e.message.includes("Unauthorized") && !e.message.includes("로그인이 필요합니다")) { 
+      if (retries > 0 && !e.message.includes("제공량") && !e.message.includes("Unauthorized") && !e.message.includes("로그인이 필요합니다") && !e.message.includes("백엔드 서버 에러")) { 
           await new Promise(res => setTimeout(res, delay)); 
           return FirebaseServices.callGeminiEngine(payload, engineConfig, retries - 1, delay * 2); 
       }
@@ -1647,20 +1652,28 @@ const HumanOSApp = () => {
     setMessages(prev => { const slotData = prev[slotKey] || { board: [] }; return { ...prev, [slotKey]: { ...slotData, board: [...(slotData.board || []), { role: 'user', content: currentInput, id: userMsgId }] } }; });
     if (!forcedPrompt) setChatInput(''); setIsTyping(true);
 
+    // 💡 [패치 1] 질문 증발 방지: 사용자의 질문을 AI 답변을 기다리기 전에 DB에 최우선으로 즉시 저장합니다.
+    if (viewMode === 'landing' && targetLandingUid) {
+        // 랜딩 모드는 따로 처리
+    } else if (user) {
+        const roomCol = collection(db, 'artifacts', appId, 'users', user.uid, 'roomMessages');
+        await addDoc(roomCol, { slotIdx: activeDomainIdx, role: 'user', content: currentInput, timestamp: userMsgId });
+    }
+
     try {
       let K_POOL = "";
       let systemInstructionText = "";
 
-      const activeGiantsNames = activeDomainIdx === 6 ? joinedMasters : MASTER_CONFIG.filter(m => m.slot === activeDomainIdx && activeMembers.includes(m.name)).map(m => m.name);    
+      let activeGiantsNames = activeDomainIdx === 6 ? joinedMasters : MASTER_CONFIG.filter(m => m.slot === activeDomainIdx && activeMembers.includes(m.name)).map(m => m.name);    
       
+      // 💡 [패치 2] 아무도 참석ON을 누르지 않았을 때의 방어: 자동으로 해당 방의 전원 참석으로 간주하고 토론을 강행합니다.
       if (viewMode !== 'landing' && activeDomainIdx !== 6 && activeGiantsNames.length === 0) {
-          triggerToast("최소 1명 이상의 위원을 참석시켜주세요.");
-          setIsTyping(false);
-          return;
+          activeGiantsNames = MASTER_CONFIG.filter(m => m.slot === activeDomainIdx).map(m => m.name);
       }
       
       let finalGiantsNames = activeGiantsNames;
       let isSoloMyAvatar = false;
+
       if (activeDomainIdx === 6 && activeGiantsNames.length === 0) {
           finalGiantsNames = [profile.userName];
           isSoloMyAvatar = true;
@@ -1726,26 +1739,32 @@ const HumanOSApp = () => {
           let impactInstruction = spices.ir ? "- (가상의 정량적 임팩트 및 수치화된 기대효과를 반드시 포함하여 작성)" : "- (이 아이디어를 즉시 실행에 옮기거나 타인을 설득하기 위한 구체적인 3단계 로드맵 및 기대 효과)";
 
           structureGuide += `### 🚀 [실행 전략 및 설득 논리 (Action Plan)]\n${impactInstruction}\n\n`;
-
+// ... existing code ...
           if (spices.qna) {
               structureGuide += "### ❓ [예상 Q&A (반박 및 방어)]\n- Q1: (발표 후 예상되는 가장 까다로운 질문 1)\n  - A1: (거장의 지능을 활용한 압도적인 모범 답변)\n- Q2: (발표 후 예상되는 가장 까다로운 질문 2)\n  - A2: (모범 답변)\n";
           }
 
              formatGuide = structureGuide;
         } else {
-          // 💡👇 여기서부터 교체: AI 코디네이터 프롬프트를 전원 참석 강제 모드로 변경합니다.
-          chairmanPrompt = `너는 meta DNA 지능형 위원회의 'AI 코디네이터'다. 오늘 참석한 위원들은 [${finalGiantsNames.join(', ')}] 이다. 반드시 **참석한 위원 전원이 빠짐없이 번갈아 가며 최소 1회 이상 발언**하도록 토론을 구성하라. 각 위원은 오직 자신의 지능 유닛만을 근거로 서로 반박하고 동의하는 생생한 티키타카를 보여야 한다. 불필요한 본인 소개("저는 AI 코디네이터입니다" 등)나 인사말은 절대 생략하고, 곧바로 오늘의 핵심 의제를 소개하며 토론을 시작하라.`;
+          // 💡👇 여기서부터 교체: AI가 꼼수를 못 쓰도록, 실제 참석한 위원들의 이름표를 강제로 양식에 찍어냅니다.
+          const memberListStr = finalGiantsNames.map(n => `- ${n}`).join("\n");
+          const conversationTemplate = finalGiantsNames.map(n => `**[위원: ${n}] - "핵심 발언 요약"**\n(자신의 [지능 노드]를 자연스럽게 굵은 글씨로 언급하며 논리적 의견 제시)`).join("\n\n");
+
+          chairmanPrompt = `너는 meta DNA 지능형 위원회의 'AI 코디네이터'다. 
+오늘 참석한 위원들은 아래와 같다:
+${memberListStr}
+
+반드시 위 명단에 있는 **참석자 전원이 1번 이상씩 빠짐없이 발언**하도록 토론을 구성하라. 특정 위원 혼자서 연속으로 발언하거나, 아예 발언에서 누락되는 위원이 있어서는 절대 안 된다.
+각 위원은 오직 제공된 [KNOWLEDGE_POOL] 내 자신의 [지능 노드]만을 근거로 서로 반박하고 동의하는 생생한 티키타카를 보여야 한다.
+불필요한 본인 소개나 인사말은 절대 생략하고, 곧바로 오늘의 핵심 의제를 소개하며 토론을 시작하라.`;
 
           formatGuide = `[필수 출력 양식 - 도입부 인사말 없이 바로 안건 상정부터 시작할 것]
 ### 🌐 [meta DNA 지능형 위원회 토론 기록]
 **[안건 상정]**: (사용자의 질문을 바탕으로 "오늘의 핵심 의제는 [OOO]입니다. 심도 있는 토론을 시작하겠습니다." 형태의 짧은 문장 작성)
 
-**[위원: A] - "핵심 발언 요약"**
-대화 내용... (자신의 [지능 노드]를 자연스럽게 굵은 글씨로 언급)
-**[위원: B] - "핵심 발언 요약"**
-대화 내용... (A의 발언에 동의하거나 반박하며 자신의 [지능 노드] 언급)
-**[위원: C] - "핵심 발언 요약"**
-대화 내용... (오늘 참석한 모든 위원이 빠짐없이 발언할 때까지 대화 반복)
+${conversationTemplate}
+
+(※ 필요시 위원들 간의 반박과 재반박을 위해 대화를 더 이어가도 좋음. 단, 모든 참석 위원이 반드시 최소 1회 발언해야 함)
 ---
 ### *** [최종 전략 합의안] : "합의안 제목"
 (구체적인 3단계 실행 로드맵 및 결론 요약)`;
@@ -1785,13 +1804,14 @@ const HumanOSApp = () => {
             triggerToast("AC가 부족하여 자동 각인되지 않았습니다.");
          }
       }
+  
       if (viewMode === 'landing' && targetLandingUid) {
         const qnaCol = collection(db, 'artifacts', appId, 'users', targetLandingUid, 'landingQnA');
         await addDoc(qnaCol, { question: currentInput, answer: content, timestamp: asstMsgId });
         await setDoc(doc(db, 'artifacts', appId, 'users', targetLandingUid, 'settings', 'profile'), { profile: { answerCount: increment(1) } }, { merge: true });
       } else if (user) {
         const roomCol = collection(db, 'artifacts', appId, 'users', user.uid, 'roomMessages');
-        await addDoc(roomCol, { slotIdx: activeDomainIdx, role: 'user', content: currentInput, timestamp: userMsgId });
+        // 💡 사용자 질문 저장은 위로 올렸으므로, 여기서는 AI가 내뱉은 답변만 저장합니다.
         await addDoc(roomCol, { slotIdx: activeDomainIdx, role: 'assistant', content, timestamp: asstMsgId, tokenUsage }); 
       }
       setMessages(prev => { const slotData = prev[slotKey] || { board: [] }; return { ...prev, [slotKey]: { ...slotData, board: [...(slotData.board || []), { role: 'assistant', content, id: asstMsgId, tokenUsage }] } }; });
