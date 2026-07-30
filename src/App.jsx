@@ -1866,6 +1866,7 @@ const HumanOSApp = () => {
       const acAmount = urlParams.get('acAmount'); // 프론트에서 넘겨뒀던 충전할 AC 코인
       const paymentStatus = urlParams.get('payment');
 
+// ... existing code ...
       // 결제 실패 처리
       if (paymentStatus === 'fail') {
          triggerToast("결제가 취소되었거나 실패했습니다.");
@@ -1888,15 +1889,27 @@ const HumanOSApp = () => {
             })
           });
 
-          const data = await response.json();
+          // 💡👇 여기서부터 교체되는 핵심 부분입니다. 
+          // 서버 응답이 에러 페이지(HTML)일 경우 프로그램이 뻗지 않도록 먼저 텍스트로 읽어냅니다.
+          const textResponse = await response.text();
+          let data;
+          try {
+            data = JSON.parse(textResponse);
+          } catch (parseError) {
+             console.error("Vercel 응답 에러 원본:", textResponse);
+             triggerToast("백엔드 오류: Vercel 로그나 환경 변수(JSON) 설정을 확인하세요.");
+             return;
+          }
 
           if (response.ok && data.success) {
             triggerToast(`${Number(acAmount).toLocaleString()} AC 안전 결제 및 충전 완료!`);
           } else {
             triggerToast(`결제 실패: ${data.error}`);
           }
+          // 💡👆 여기까지 교체 완료
+          
         } catch (error) {
-          triggerToast("네트워크 오류로 결제 검증에 실패했습니다.");
+          triggerToast(`네트워크 오류: ${error.message}`);
         } finally {
           // 보안 및 깔끔함을 위해 주소창에 노출된 결제 파라미터들을 모두 지워버립니다.
           const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
