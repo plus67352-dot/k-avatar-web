@@ -1,18 +1,19 @@
-import admin from 'firebase-admin';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // 🚨 1. Firebase 관리자 권한 초기화 (에러 추적을 위해 핸들러 내부로 이동)
-  if (!admin.apps.length) {
+  // 🚨 1. Firebase 관리자 권한 초기화 (최신 firebase-admin v12+ 방식)
+  if (!getApps().length) {
     try {
       const rawKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
       if (!rawKey) {
         return res.status(500).json({ error: 'Vercel 환경 변수에 FIREBASE_SERVICE_ACCOUNT_KEY가 없습니다.' });
       }
       const serviceAccount = JSON.parse(rawKey);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+      initializeApp({
+        credential: cert(serviceAccount)
       });
     } catch (initError) {
       console.error('Firebase Admin Init Error:', initError);
@@ -49,11 +50,11 @@ export default async function handler(req, res) {
     }
 
     // 3. 결제 검증이 완벽히 성공했으므로, Firebase Admin(관리자 권한)으로 코인을 안전하게 올려줍니다.
-    const db = admin.firestore();
+    const db = getFirestore();
     const userRef = db.doc(`artifacts/${appId}/users/${uid}/settings/profile`);
     
     await userRef.set({
-      profile: { userCoins: admin.firestore.FieldValue.increment(Number(acAmount)) }
+      profile: { userCoins: FieldValue.increment(Number(acAmount)) }
     }, { merge: true });
 
     return res.status(200).json({ success: true, message: '결제 및 충전이 완벽하게 완료되었습니다.' });
@@ -63,4 +64,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: '서버 내부 오류로 결제 처리에 실패했습니다.' });
   }
 }
-
