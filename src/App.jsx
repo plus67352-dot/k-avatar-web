@@ -18,12 +18,9 @@ import {
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.60 (K-Avatar Edition)";
+const APP_VERSION = "F77.11.61 (K-Avatar Edition)";
 
-// 🚨 [보안 패치] Gemini API 키는 프론트엔드에서 완전히 제거되었습니다.
-// 이제 백엔드(Vercel API)에서만 API 키를 안전하게 관리합니다.
-
-// 👇 새로운 무명(임시) 구글 계정으로 만든 Firebase 프로젝트의 키값을 여기에 넣으세요!
+// 👇 환경 변수 적용
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY, 
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -192,13 +189,11 @@ const FirebaseServices = {
     } catch (e) { return false; }
   },
 
-  // 🚨 [보안 패치 완료] 프론트엔드에서 파이어베이스 인증 토큰과 시크릿 암호를 Vercel 백엔드로 전달합니다.
   callGeminiEngine: async (payload, engineConfig, retries = 5, delay = 1000) => {
     try {
-      // 1. 현재 접속 중인 사용자의 Firebase 보안 토큰(JWT) 발급 대기 로직
       const token = await new Promise((resolve, reject) => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-          unsubscribe(); // 한 번만 확인하고 리스너 해제
+          unsubscribe(); 
           if (user) {
             try {
               const idToken = await user.getIdToken(true); 
@@ -212,24 +207,21 @@ const FirebaseServices = {
         }, reject);
       });
 
-      // 2. Vercel 백엔드에 요청 시 Header에 토큰과 '시크릿 암호' 동봉
       const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`, 
-          'X-K-Avatar-Secret': 'demo-secure-key-777' // 🔥 해커의 Postman 공격을 막아내는 비밀 암호
+          'X-K-Avatar-Secret': 'demo-secure-key-777' 
         },
         body: JSON.stringify({ payload, engineConfig })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        
         if (response.status === 429) {
            throw new Error("Gemini Pro 모델의 무료 제공량(1분당 2회)을 초과했습니다. 1분 후 다시 시도해주세요.");
         }
-        
         throw new Error(errorData.error || `서버 에러 상태 코드: ${response.status}`);
       }
 
@@ -275,6 +267,7 @@ const useMasterDNA = () => {
   return masterIntelSet;
 };
 
+// 🚨 에러 원인 제거: processPayment 로직을 이곳(Hook)에서 제거했습니다!
 const useFirebaseSubscriptions = (user, viewMode, activeDomainIdx, targetLandingUid) => {
   const [profile, setProfile] = useState({ userName: '사용자', userCoins: 1000, userAlias: '', userIntro: '', userPhoto: '', answerCount: 0, chatFontSize: 10 }); 
   const [domains, setDomains] = useState([ 
@@ -1598,7 +1591,6 @@ const HumanOSApp = () => {
     return resultNodes;
   }, [knowledgeList, landingKnowledge, landingProfile, viewMode, subscribedAvatars, masterIntelSet]);
 
-// ... existing code ...
   const handleDeepDive = async (name) => {
     if (!name) return; 
     if (user && user.isAnonymous) { triggerToast("구글 로그인이 필요합니다."); return; }
@@ -1625,9 +1617,9 @@ const HumanOSApp = () => {
       }, engineConfig);
       const content = String(res.candidates?.[0]?.content?.parts?.[0]?.text || "연결 지연.");
       
-      const tokenUsage = res.usageMetadata || null; // 💡 누락되었던 데이터 추출 로직 추가
+      const tokenUsage = res.usageMetadata || null; 
       
-      setMessages(prev => { const slotData = prev[activeDomainIdx] || {}; const history = slotData[targetName] || []; return { ...prev, [activeDomainIdx]: { ...slotData, [targetName]: [...history, { role: 'assistant', content: content, id: Date.now()+1, tokenUsage }] } }; }); // 💡 맨 끝에 tokenUsage 저장
+      setMessages(prev => { const slotData = prev[activeDomainIdx] || {}; const history = slotData[targetName] || []; return { ...prev, [activeDomainIdx]: { ...slotData, [targetName]: [...history, { role: 'assistant', content: content, id: Date.now()+1, tokenUsage }] } }; }); 
     } catch (e) {
       setMessages(prev => { const slotData = prev[activeDomainIdx] || {}; const history = slotData[targetName] || []; return { ...prev, [activeDomainIdx]: { ...slotData, [targetName]: [...history, { role: 'system', content: `API 오류: ${e.message}`, id: Date.now() }] } }; });
     } finally { setIsTyping(false); }
