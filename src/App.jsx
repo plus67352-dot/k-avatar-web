@@ -1731,11 +1731,7 @@ const HumanOSApp = () => {
               structureGuide += "### ❓ [예상 Q&A (반박 및 방어)]\n- Q1: (발표 후 예상되는 가장 까다로운 질문 1)\n  - A1: (거장의 지능을 활용한 압도적인 모범 답변)\n- Q2: (발표 후 예상되는 가장 까다로운 질문 2)\n  - A2: (모범 답변)\n";
           }
 
-          formatGuide = structureGuide;
-        } else {
-          chairmanPrompt = `너는 meta DNA 지능형 위원회의 'AI 코디네이터'다. 참여한 위원들("${finalGiantsNames.join(', ')}")의 지능 유닛만을 근거로 토론을 진행하라. 불필요한 본인 소개("저는 AI 코디네이터입니다" 등)나 인사말은 절대 생략하고, 곧바로 오늘의 핵심 의제를 소개하며 토론을 시작하라.`;
-
-          formatGuide = structureGuide;
+             formatGuide = structureGuide;
         } else {
           // 💡👇 여기서부터 교체: AI 코디네이터 프롬프트를 전원 참석 강제 모드로 변경합니다.
           chairmanPrompt = `너는 meta DNA 지능형 위원회의 'AI 코디네이터'다. 오늘 참석한 위원들은 [${finalGiantsNames.join(', ')}] 이다. 반드시 **참석한 위원 전원이 빠짐없이 번갈아 가며 최소 1회 이상 발언**하도록 토론을 구성하라. 각 위원은 오직 자신의 지능 유닛만을 근거로 서로 반박하고 동의하는 생생한 티키타카를 보여야 한다. 불필요한 본인 소개("저는 AI 코디네이터입니다" 등)나 인사말은 절대 생략하고, 곧바로 오늘의 핵심 의제를 소개하며 토론을 시작하라.`;
