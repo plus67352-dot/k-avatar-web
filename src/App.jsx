@@ -18,7 +18,7 @@ import {
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.64 (K-Avatar Master Edition)";
+const APP_VERSION = "F77.11.65 (K-Avatar Master Edition)";
 
 // 👇 환경 변수 적용
 const firebaseConfig = {
@@ -343,13 +343,29 @@ const useFirebaseSubscriptions = (user, viewMode, activeDomainIdx, targetLanding
             if(d.engineConfig) setEngineConfig(d.engineConfig); 
         } 
     }, (error) => console.error("Profile sync error:", error));
+
+// ... existing code ...
     const unsubKnowledge = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'knowledge'), (snap) => {
       setKnowledgeList(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0)));
     }, (error) => console.error("Knowledge sync error:", error));
+    
+    // 💡👇 교체: QnA를 불러올 때 20개가 넘으면 주인의 앱이 자동으로 가장 오래된 데이터를 청소합니다.
     const unsubQnA = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'landingQnA'), (snap) => {
-      setMyLandingQnA(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0)));
+      const qnaList = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
+      setMyLandingQnA(qnaList);
+      
+      // 20개 제한 로직: 주인의 DB에 20개가 넘는 데이터가 쌓이면 21번째부터는 자동으로 삭제
+      if (qnaList.length > 20) {
+        const toDelete = qnaList.slice(20);
+        toDelete.forEach(async (item) => {
+          try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'landingQnA', item.id)); } catch(e){}
+        });
+      }
     }, (error) => console.error("QnA sync error:", error));
+    // 💡👆 교체 완료
+
     const unsubSubs = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'subscriptions'), (snap) => {
+
       const list = []; const now = Date.now();
       snap.forEach(d => {
         const data = d.data(); const elapsed = now - (data.adoptedAt || 0);
@@ -594,23 +610,21 @@ const B2BEnterpriseView = ({ user, engineConfig, onBackToIntro, getDisplayNodes,
             contents: [{ parts: [{ text: text }] }], 
             systemInstruction: { parts: [{ text: systemPrompt }] } 
         }, engineConfig);
-        
+
         let rawReply = res.candidates?.[0]?.content?.parts?.[0]?.text || "응답 지연.";
         let htmlReply = rawReply.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
         setChatHistory(prev => [...prev, { role: 'assistant', text: htmlReply }]);
         
         const newTimestamp = Date.now();
 
-        // 💡 [패치 1] 방문자가 남의 명예의 전당 DB를 함부로 수정하지 못하게 막은 보안 규칙 때문에 에러가 났습니다. 
-        // DB 저장을 건너뛰고 화면(로컬)에만 즉각 반영하도록 임시 주석 처리합니다.
-        /* 
+        // 💡👇 교체: 방문자의 질문을 DB에 저장하는 코드를 복구합니다.
         const qnaCol = collection(db, 'artifacts', appId, 'users', selectedAvatar.ownerUid, 'landingQnA');
         await addDoc(qnaCol, { question: text, answer: rawReply, timestamp: newTimestamp });
-        await setDoc(doc(db, 'artifacts', appId, 'users', selectedAvatar.ownerUid, 'settings', 'profile'), { profile: { answerCount: increment(1) } }, { merge: true });
-        */
+        // 💡👆 교체 완료
 
         setAvatarQna(prev => [{ question: text, answer: rawReply, timestamp: newTimestamp }, ...prev].slice(0, 20));
     } catch(e) {
+
         setChatHistory(prev => [...prev, { role: 'system', text: `네트워크 오류가 발생했습니다: ${e.message}` }]);
     } finally {
         setIsTyping(false);
@@ -1795,47 +1809,24 @@ ${conversationTemplate}
       }
       const res = await FirebaseServices.callGeminiEngine({ contents: [{ parts: [{ text: currentInput }] }], systemInstruction: { parts: [{ text: systemInstructionText }] } }, engineConfig);
       const content = String(res.candidates?.[0]?.content?.parts?.[0]?.text || "응답 지연.");
+
       const tokenUsage = res.usageMetadata || null; 
       const asstMsgId = Date.now() + 1;
 
       if (viewMode !== 'landing' && user) { 
-         const currentCoins = Number(profile?.userCoins) || 0;
-         const currentMasterName = profile?.userName || '사용자';
-
-         if (currentCoins >= 1) {
-            try {
-               await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'knowledge'), { 
-                   content: content.substring(0, 100000), 
-                   domainIdx: 7, 
-                   masterName: currentMasterName, 
-                   source: "AUTO_CHAT_IMPRINT", 
-                   hashtag: `#자동각인_${String(asstMsgId).slice(-4)}`, 
-                   timestamp: asstMsgId 
-               });
-               await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile'), { 
-                   profile: { userCoins: increment(-1) } 
-               }, { merge: true });
-               
-               triggerToast("답변 자동 각인 완료 (-1 AC)");
-            } catch (err) {
-               triggerToast("자동 각인 DB 저장 실패 (권한 또는 네트워크)");
-            }
-         } else {
-            triggerToast("AC가 부족하여 자동 각인되지 않았습니다.");
-         }
+// ...
       }
   
       if (viewMode === 'landing' && targetLandingUid) {
-        // 💡 [패치 2] 랜딩페이지 방문자 역시 남의 DB를 수정할 수 없으므로 DB 저장을 건너뜁니다.
-        /*
+        // 💡👇 교체: 랜딩페이지 방문자의 질문을 DB에 저장하는 코드를 복구합니다.
         const qnaCol = collection(db, 'artifacts', appId, 'users', targetLandingUid, 'landingQnA');
         await addDoc(qnaCol, { question: currentInput, answer: content, timestamp: asstMsgId });
-        await setDoc(doc(db, 'artifacts', appId, 'users', targetLandingUid, 'settings', 'profile'), { profile: { answerCount: increment(1) } }, { merge: true });
-        */
-
+        // 💡👆 교체 완료
       } else if (user) {
         const roomCol = collection(db, 'artifacts', appId, 'users', user.uid, 'roomMessages');
         // 💡 사용자 질문 저장은 위로 올렸으므로, 여기서는 AI가 내뱉은 답변만 저장합니다.
+ 
+
         await addDoc(roomCol, { slotIdx: activeDomainIdx, role: 'assistant', content, timestamp: asstMsgId, tokenUsage }); 
       }
       setMessages(prev => { const slotData = prev[slotKey] || { board: [] }; return { ...prev, [slotKey]: { ...slotData, board: [...(slotData.board || []), { role: 'assistant', content, id: asstMsgId, tokenUsage }] } }; });
