@@ -18,7 +18,7 @@ import {
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.63 (K-Avatar Special Edition)";
+const APP_VERSION = "F77.11.64 (K-Avatar Master Edition)";
 
 // 👇 환경 변수 적용
 const firebaseConfig = {
@@ -229,14 +229,12 @@ const FirebaseServices = {
            throw new Error("Gemini Pro 모델의 무료 제공량(1분당 2회)을 초과했습니다. 1분 후 다시 시도해주세요.");
         }
         
-        // 💡 [패치] 객체 형태의 에러 메시지를 올바르게 문자열로 뽑아내어 무한 재시도를 방지합니다.
         const actualErrorMessage = typeof errorData.error === 'object' ? errorData.error.message : errorData.error;
         throw new Error(`API 응답 에러: ${actualErrorMessage || '상태 코드 ' + response.status}`);
       }
 
       return await response.json();
     } catch (e) {
-      // 💡 [패치] API가 명시적으로 거절한 경우(API 응답 에러) 재시도하지 않고 바로 멈춰서 무지개를 끕니다.
       if (retries > 0 && !e.message.includes("제공량") && !e.message.includes("Unauthorized") && !e.message.includes("로그인이 필요합니다") && !e.message.includes("백엔드 서버 에러") && !e.message.includes("API 응답 에러")) { 
           await new Promise(res => setTimeout(res, delay)); 
           return FirebaseServices.callGeminiEngine(payload, engineConfig, retries - 1, delay * 2); 
@@ -277,7 +275,6 @@ const useMasterDNA = () => {
   return masterIntelSet;
 };
 
-// 🚨 에러 원인 제거: processPayment 로직을 이곳(Hook)에서 제거했습니다!
 const useFirebaseSubscriptions = (user, viewMode, activeDomainIdx, targetLandingUid) => {
   const [profile, setProfile] = useState({ userName: '사용자', userCoins: 1000, userAlias: '', userIntro: '', userPhoto: '', answerCount: 0, chatFontSize: 10 }); 
   const [domains, setDomains] = useState([ 
@@ -603,10 +600,14 @@ const B2BEnterpriseView = ({ user, engineConfig, onBackToIntro, getDisplayNodes,
         setChatHistory(prev => [...prev, { role: 'assistant', text: htmlReply }]);
         
         const newTimestamp = Date.now();
+
+        // 💡 [패치 1] 방문자가 남의 명예의 전당 DB를 함부로 수정하지 못하게 막은 보안 규칙 때문에 에러가 났습니다. 
+        // DB 저장을 건너뛰고 화면(로컬)에만 즉각 반영하도록 임시 주석 처리합니다.
+        /* 
         const qnaCol = collection(db, 'artifacts', appId, 'users', selectedAvatar.ownerUid, 'landingQnA');
         await addDoc(qnaCol, { question: text, answer: rawReply, timestamp: newTimestamp });
-        
         await setDoc(doc(db, 'artifacts', appId, 'users', selectedAvatar.ownerUid, 'settings', 'profile'), { profile: { answerCount: increment(1) } }, { merge: true });
+        */
 
         setAvatarQna(prev => [{ question: text, answer: rawReply, timestamp: newTimestamp }, ...prev].slice(0, 20));
     } catch(e) {
@@ -1487,14 +1488,22 @@ const HumanOSApp = () => {
     } catch (e) { triggerToast("저장 오류"); }
   };
 
-  const handleFileUpload = (e) => {
+const handleFileUpload = (e) => {
     const file = e.target.files[0]; if (!file || !user) return;
     deductAC(10).then(success => {
       if (!success) { e.target.value = null; return; }
       triggerToast(`${String(file.name)} 분석 중... (-10 AC)`);
       const reader = new FileReader(); reader.onload = async (ev) => {
-        try { await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'knowledge'), { content: String(ev.target.result).trim().substring(0, 100000), domainIdx: 7, masterName: String(profile.userName), source: "DOC_IMPORT", hashtag: `#문서각인`, timestamp: Date.now() }); triggerToast("문서 각인 성공"); } 
-        catch (err) { triggerToast("각인 실패"); }
+        try { 
+            // 💡 [패치 4] 문서 각인 시 시스템 Import 수익 기록
+            const batch = writeBatch(db);
+            const kRef = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'knowledge'));
+            batch.set(kRef, { content: String(ev.target.result).trim().substring(0, 100000), domainIdx: 7, masterName: String(profile.userName), source: "DOC_IMPORT", hashtag: `#문서각인`, timestamp: Date.now() }); 
+            batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'finance', 'revenue'), { importRevenue: increment(10) }, { merge: true });
+            await batch.commit();
+            triggerToast("문서 각인 성공"); 
+        } 
+        catch (err) { triggerToast("각인 실패: " + err.message); }
       }; reader.readAsText(file); e.target.value = null;
     });
   };
@@ -1510,6 +1519,10 @@ const HumanOSApp = () => {
           const list = Array.isArray(data) ? data : (data.knowledge || data.nodes || [data]);
           const batch = writeBatch(db); const kCol = collection(db, 'artifacts', appId, 'users', user.uid, 'knowledge');
           list.forEach(n => { batch.set(doc(kCol), { content: String(n.content || n.text || "").trim().substring(0, 100000), domainIdx: 7, masterName: String(n.masterName || profile.userName), source: "AVATAR_IMPORT", hashtag: String(n.hashtag || n.tag || "#지능_상속"), timestamp: Date.now() }); });
+          
+          // 💡 [추가 패치] DNA 각인 시 시스템 Import 수익(10AC) 기록
+          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'finance', 'revenue'), { importRevenue: increment(10) }, { merge: true });
+
           await batch.commit(); triggerToast(`${String(list.length)}개 지능 유닛 이식 완료`);
         } catch (err) { triggerToast(`이식 오류`); }
       }; reader.readAsText(file); e.target.value = null;
@@ -1746,7 +1759,7 @@ const HumanOSApp = () => {
           let impactInstruction = spices.ir ? "- (가상의 정량적 임팩트 및 수치화된 기대효과를 반드시 포함하여 작성)" : "- (이 아이디어를 즉시 실행에 옮기거나 타인을 설득하기 위한 구체적인 3단계 로드맵 및 기대 효과)";
 
           structureGuide += `### 🚀 [실행 전략 및 설득 논리 (Action Plan)]\n${impactInstruction}\n\n`;
-// ... existing code ...
+
           if (spices.qna) {
               structureGuide += "### ❓ [예상 Q&A (반박 및 방어)]\n- Q1: (발표 후 예상되는 가장 까다로운 질문 1)\n  - A1: (거장의 지능을 활용한 압도적인 모범 답변)\n- Q2: (발표 후 예상되는 가장 까다로운 질문 2)\n  - A2: (모범 답변)\n";
           }
@@ -1813,9 +1826,13 @@ ${conversationTemplate}
       }
   
       if (viewMode === 'landing' && targetLandingUid) {
+        // 💡 [패치 2] 랜딩페이지 방문자 역시 남의 DB를 수정할 수 없으므로 DB 저장을 건너뜁니다.
+        /*
         const qnaCol = collection(db, 'artifacts', appId, 'users', targetLandingUid, 'landingQnA');
         await addDoc(qnaCol, { question: currentInput, answer: content, timestamp: asstMsgId });
         await setDoc(doc(db, 'artifacts', appId, 'users', targetLandingUid, 'settings', 'profile'), { profile: { answerCount: increment(1) } }, { merge: true });
+        */
+
       } else if (user) {
         const roomCol = collection(db, 'artifacts', appId, 'users', user.uid, 'roomMessages');
         // 💡 사용자 질문 저장은 위로 올렸으므로, 여기서는 AI가 내뱉은 답변만 저장합니다.
@@ -1847,12 +1864,13 @@ ${conversationTemplate}
     window.speechSynthesis.speak(utterance); setIsSpeaking(id);
   }, [isSpeaking, ttsGender]);
 
+// ... existing code ...
   const handleImprintChat = (content) => {
     if (Number(profile.userCoins || 0) < 10) { triggerToast("AC가 부족하여 각인할 수 없습니다."); return; }
     setManualText(content); setManualTag("#위원회_합의"); setShowImprintModal(true);
   };
 
-// 💡👇 여기서부터 교체: 거래 승인 로직 보안 패치
+  // 💡 [패치 3] 아바타 거래 시스템 수익(수수료) 기록을 복구합니다.
   const handleSubscribeAvatarFromMarket = async (avatar, type) => {
     const cost = type === 'subscribe' ? (avatar.fees?.monthly || 50) : (avatar.fees?.daily || 5);
     if (Number(profile.userCoins || 0) < cost) { triggerToast(`도입 AC가 부족합니다.`); return; }
@@ -1860,24 +1878,25 @@ ${conversationTemplate}
     try {
       const batch = writeBatch(db);
       
-      // 1. 내 지갑에서 코인 차감
+      // 내 지갑에서 코인 차감
       batch.update(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile'), { "profile.userCoins": increment(-cost) });
       
-      // 💡 [보안 패치] 클라이언트(화면)에서 타인(판매자)의 지갑을 열어 돈을 넣어주는 행위는 해킹으로 간주되어 
-      // 파이어베이스 보안 규칙에 의해 튕기게 됩니다. 따라서 판매자 송금 및 시스템 수익 코드는 임시로 제거합니다.
+      // 시스템 전체 수익에 아바타 매출 누적
+      const ownerEarning = Math.floor(cost * 0.7);
+      batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'finance', 'revenue'), { 
+          avatarRevenue: increment(avatar.ownerUid.startsWith('system_') ? cost : (cost - ownerEarning)) 
+      }, { merge: true });
 
-      // 2. 내 구독 목록에 아바타 추가
+      // 내 구독 목록에 아바타 추가
       batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'subscriptions', avatar.ownerUid), { ...avatar, adoptionType: type, adoptedAt: Date.now() });
       
       await batch.commit();
       triggerToast(`${avatar.userName} 도입 완료 (-${cost} AC).`);
     } catch (e) { 
       console.error(e);
-      triggerToast("거래 처리 중 오류가 발생했습니다."); 
+      triggerToast("거래 처리 중 오류가 발생했습니다. (보안 규칙 확인 필요)"); 
     }
   };
-  // 💡👆 여기까지 교체 완료
-
   const handleUnregisterAvatar = async () => {
     if (!user) return;
     try {
@@ -2232,7 +2251,16 @@ ${conversationTemplate}
 
       {showImprintModal && (
         <div className="fixed inset-0 z-[10000] bg-slate-900/80 backdrop-blur-md flex items-end justify-center font-extrabold text-left text-slate-900">
-          <div className="bg-white w-full rounded-t-[3rem] shadow-2xl animate-in slide-in-from-bottom duration-300 font-extrabold"><div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 font-bold"><h3 className="text-xl font-extrabold text-slate-900 uppercase">Intelligence Imprint</h3><button onClick={() => { setShowImprintModal(false); setManualText(''); }} className="p-2 bg-slate-200 rounded-full"><X size={20}/></button></div><div className="p-6 space-y-4 pb-12"><textarea value={manualText} onChange={(e) => setManualText(e.target.value)} placeholder="데이터 입력..." style={{ height: '180px' }} className="w-full bg-slate-50 p-4 rounded-2xl border-none focus:ring-1 focus:ring-blue-600 font-bold text-[10px] shadow-inner" /><input value={manualTag} onChange={(e) => setManualTag(e.target.value)} placeholder="#태그" className="w-full bg-slate-50 p-3 rounded-xl border-none font-bold text-[10px] shadow-inner" /><button onClick={async () => { if (!manualText.trim()) return; const success = await deductAC(10); if (!success) return; await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'knowledge'), { content: manualText.trim().substring(0, 8000), domainIdx: 7, masterName: profile.userName, source: "Manual", hashtag: manualTag, timestamp: Date.now() }); setManualText(''); setManualTag(''); setShowImprintModal(false); triggerToast("CHAT 각인 완료 (-10 AC)"); }} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-extrabold text-lg shadow-xl uppercase transition-all active:scale-95">각인 시작</button></div></div>
+          <div className="bg-white w-full rounded-t-[3rem] shadow-2xl animate-in slide-in-from-bottom duration-300 font-extrabold"><div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 font-bold"><h3 className="text-xl font-extrabold text-slate-900 uppercase">Intelligence Imprint</h3><button onClick={() => { setShowImprintModal(false); setManualText(''); }} className="p-2 bg-slate-200 rounded-full"><X size={20}/></button></div><div className="p-6 space-y-4 pb-12"><textarea value={manualText} onChange={(e) => setManualText(e.target.value)} placeholder="데이터 입력..." style={{ height: '180px' }} className="w-full bg-slate-50 p-4 rounded-2xl border-none focus:ring-1 focus:ring-blue-600 font-bold text-[10px] shadow-inner" /><input value={manualTag} onChange={(e) => setManualTag(e.target.value)} placeholder="#태그" className="w-full bg-slate-50 p-3 rounded-xl border-none font-bold text-[10px] shadow-inner" /><button onClick={async () => { if (!manualText.trim()) return; const success = await deductAC(10); if (!success) return; 
+            
+            // 💡 [추가 패치] 수동 채팅 각인 시 시스템 Import 수익(10AC) 기록을 위해 batch 로직 적용
+            const batch = writeBatch(db);
+            batch.set(doc(collection(db, 'artifacts', appId, 'users', user.uid, 'knowledge')), { content: manualText.trim().substring(0, 8000), domainIdx: 7, masterName: profile.userName, source: "Manual", hashtag: manualTag, timestamp: Date.now() }); 
+            batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'finance', 'revenue'), { importRevenue: increment(10) }, { merge: true });
+            await batch.commit();
+            
+            setManualText(''); setManualTag(''); setShowImprintModal(false); triggerToast("CHAT 각인 완료 (-10 AC)"); 
+          }} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-extrabold text-lg shadow-xl uppercase transition-all active:scale-95">각인 시작</button></div></div>
         </div>
       )}
 
