@@ -228,11 +228,16 @@ const FirebaseServices = {
         if (response.status === 429) {
            throw new Error("Gemini Pro 모델의 무료 제공량(1분당 2회)을 초과했습니다. 1분 후 다시 시도해주세요.");
         }
-        throw new Error(errorData.error || `서버 에러 상태 코드: ${response.status}`);
+        
+        // 💡 [패치] 객체 형태의 에러 메시지를 올바르게 문자열로 뽑아내어 무한 재시도를 방지합니다.
+        const actualErrorMessage = typeof errorData.error === 'object' ? errorData.error.message : errorData.error;
+        throw new Error(`API 응답 에러: ${actualErrorMessage || '상태 코드 ' + response.status}`);
       }
+
       return await response.json();
     } catch (e) {
-      if (retries > 0 && !e.message.includes("제공량") && !e.message.includes("Unauthorized") && !e.message.includes("로그인이 필요합니다") && !e.message.includes("백엔드 서버 에러")) { 
+      // 💡 [패치] API가 명시적으로 거절한 경우(API 응답 에러) 재시도하지 않고 바로 멈춰서 무지개를 끕니다.
+      if (retries > 0 && !e.message.includes("제공량") && !e.message.includes("Unauthorized") && !e.message.includes("로그인이 필요합니다") && !e.message.includes("백엔드 서버 에러") && !e.message.includes("API 응답 에러")) { 
           await new Promise(res => setTimeout(res, delay)); 
           return FirebaseServices.callGeminiEngine(payload, engineConfig, retries - 1, delay * 2); 
       }
@@ -1639,20 +1644,27 @@ const HumanOSApp = () => {
       triggerToast("구글 로그인이 필요합니다.");
       return;
     }
-
     if (containsBannedWord(currentInput)) {
         triggerToast("욕설 및 비방의 질문은 받지 않습니다.");
         if (!forcedPrompt) setChatInput('');
         return;
     }
 
+    // 💡 [토큰 절약 패치 1] 상단에서 참석자 여부를 먼저 검사하여, 0명이면 DB 저장 및 로딩을 원천 차단합니다.
+    const activeGiantsNames = activeDomainIdx === 6 ? joinedMasters : MASTER_CONFIG.filter(m => m.slot === activeDomainIdx && activeMembers.includes(m.name)).map(m => m.name);    
+    
+    if (viewMode !== 'landing' && activeDomainIdx !== 6 && activeGiantsNames.length === 0) {
+        triggerToast("토큰 절약을 위해 최소 1명 이상의 위원을 참석(ON) 시켜주세요.");
+        return; // 헛되이 DB에 질문이 저장되거나 무지개 로딩이 돌지 않도록 즉시 종료
+    }
+
     const slotKey = viewMode === 'landing' ? 'landing' : activeDomainIdx;  
     
     const userMsgId = Date.now();
     setMessages(prev => { const slotData = prev[slotKey] || { board: [] }; return { ...prev, [slotKey]: { ...slotData, board: [...(slotData.board || []), { role: 'user', content: currentInput, id: userMsgId }] } }; });
+
     if (!forcedPrompt) setChatInput(''); setIsTyping(true);
 
-    // 💡 [패치 1] 질문 증발 방지: 사용자의 질문을 AI 답변을 기다리기 전에 DB에 최우선으로 즉시 저장합니다.
     if (viewMode === 'landing' && targetLandingUid) {
         // 랜딩 모드는 따로 처리
     } else if (user) {
@@ -1664,13 +1676,7 @@ const HumanOSApp = () => {
       let K_POOL = "";
       let systemInstructionText = "";
 
-      let activeGiantsNames = activeDomainIdx === 6 ? joinedMasters : MASTER_CONFIG.filter(m => m.slot === activeDomainIdx && activeMembers.includes(m.name)).map(m => m.name);    
-      
-      // 💡 [패치 2] 아무도 참석ON을 누르지 않았을 때의 방어: 자동으로 해당 방의 전원 참석으로 간주하고 토론을 강행합니다.
-      if (viewMode !== 'landing' && activeDomainIdx !== 6 && activeGiantsNames.length === 0) {
-          activeGiantsNames = MASTER_CONFIG.filter(m => m.slot === activeDomainIdx).map(m => m.name);
-      }
-      
+      // 💡 [토큰 절약 패치 2] 함수 상단에서 필터링한 명단을 그대로 이어받아 사용합니다. (전원 강제 참석 로직 삭제)
       let finalGiantsNames = activeGiantsNames;
       let isSoloMyAvatar = false;
 
@@ -1679,6 +1685,7 @@ const HumanOSApp = () => {
           isSoloMyAvatar = true;
       }
       if (viewMode === 'landing') {
+
         K_POOL = landingKnowledge.map(k => `[Fragment]: ${k.content}`).join("\n\n");
         
         const toneInstruction = "매우 정중하고 전문적인 컨설턴트/비즈니스 톤으로, 격식 있는 존댓말(하십시오체)을 사용하여 신뢰감 있게 답하라.";
