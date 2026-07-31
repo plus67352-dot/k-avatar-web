@@ -1852,20 +1852,31 @@ ${conversationTemplate}
     setManualText(content); setManualTag("#위원회_합의"); setShowImprintModal(true);
   };
 
+// 💡👇 여기서부터 교체: 거래 승인 로직 보안 패치
   const handleSubscribeAvatarFromMarket = async (avatar, type) => {
     const cost = type === 'subscribe' ? (avatar.fees?.monthly || 50) : (avatar.fees?.daily || 5);
     if (Number(profile.userCoins || 0) < cost) { triggerToast(`도입 AC가 부족합니다.`); return; }
+    
     try {
       const batch = writeBatch(db);
+      
+      // 1. 내 지갑에서 코인 차감
       batch.update(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile'), { "profile.userCoins": increment(-cost) });
-      const ownerEarning = Math.floor(cost * 0.7);
-      if (!avatar.ownerUid.startsWith('system_')) batch.set(doc(db, 'artifacts', appId, 'users', avatar.ownerUid, 'settings', 'profile'), { profile: { userCoins: increment(ownerEarning) } }, { merge: true });
-      batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'finance', 'revenue'), { avatarRevenue: increment(avatar.ownerUid.startsWith('system_') ? cost : (cost - ownerEarning)) }, { merge: true });
+      
+      // 💡 [보안 패치] 클라이언트(화면)에서 타인(판매자)의 지갑을 열어 돈을 넣어주는 행위는 해킹으로 간주되어 
+      // 파이어베이스 보안 규칙에 의해 튕기게 됩니다. 따라서 판매자 송금 및 시스템 수익 코드는 임시로 제거합니다.
+
+      // 2. 내 구독 목록에 아바타 추가
       batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'subscriptions', avatar.ownerUid), { ...avatar, adoptionType: type, adoptedAt: Date.now() });
+      
       await batch.commit();
       triggerToast(`${avatar.userName} 도입 완료 (-${cost} AC).`);
-    } catch (e) { triggerToast("거래 처리 중 오류가 발생했습니다."); }
+    } catch (e) { 
+      console.error(e);
+      triggerToast("거래 처리 중 오류가 발생했습니다."); 
+    }
   };
+  // 💡👆 여기까지 교체 완료
 
   const handleUnregisterAvatar = async () => {
     if (!user) return;
