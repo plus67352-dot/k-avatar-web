@@ -435,17 +435,18 @@ const KnowledgePreviewCard = React.memo(({ k, viewMode, userId, getDisplayNodes,
   const maxPage = Math.ceil(totalUnits / 15) - 1;
   const previewContent = String(k.content || "요약된 지능 데이터가 없습니다.").substring(0, 1500);
 
-  const isAuto = k.source === "AUTO_CHAT_IMPRINT";
+  // 💡 [패치 1-1] 수동 각인(CHAT_IMPRINT)도 파란색 테마로 인식되도록 조건 추가
+  const isChatImprint = k.source === "AUTO_CHAT_IMPRINT" || k.source === "CHAT_IMPRINT";
   
   const themeClasses = {
-    cardBg: isAuto ? "bg-blue-50/50 border-blue-100 hover:border-blue-300 hover:bg-blue-50" : "bg-amber-50/50 border-amber-100 hover:border-amber-300 hover:bg-amber-50",
-    iconBg: isAuto ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600",
-    divider: isAuto ? "border-blue-200/50" : "border-amber-200/50",
-    totalText: isAuto ? "text-blue-600" : "text-amber-600",
-    navBg: isAuto ? "border-blue-100" : "border-amber-100",
-    navBtn: isAuto ? "text-blue-400 hover:text-blue-600" : "text-amber-400 hover:text-amber-600",
-    navPageText: isAuto ? "text-blue-500" : "text-amber-500",
-    glow: isAuto ? "shadow-[0_0_5px_rgba(96,165,250,0.5)]" : "shadow-[0_0_5px_rgba(251,191,36,0.5)]"
+    cardBg: isChatImprint ? "bg-blue-50/50 border-blue-100 hover:border-blue-300 hover:bg-blue-50" : "bg-amber-50/50 border-amber-100 hover:border-amber-300 hover:bg-amber-50",
+    iconBg: isChatImprint ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600",
+    divider: isChatImprint ? "border-blue-200/50" : "border-amber-200/50",
+    totalText: isChatImprint ? "text-blue-600" : "text-amber-600",
+    navBg: isChatImprint ? "border-blue-100" : "border-amber-100",
+    navBtn: isChatImprint ? "text-blue-400 hover:text-blue-600" : "text-amber-400 hover:text-amber-600",
+    navPageText: isChatImprint ? "text-blue-500" : "text-amber-500",
+    glow: isChatImprint ? "shadow-[0_0_5px_rgba(96,165,250,0.5)]" : "shadow-[0_0_5px_rgba(251,191,36,0.5)]"
   };
 
   return (
@@ -459,14 +460,15 @@ const KnowledgePreviewCard = React.memo(({ k, viewMode, userId, getDisplayNodes,
         </div>
         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate flex-1">Genome ID: {String(k.hashtag || "#Nexus").replace('#', '')}</span>
         {viewMode === 'main' && (
+          // 💡 [패치 1-2] 눈에 안 보이던 휴지통/돋보기 버튼 디자인을 뚜렷하게 강화
           <div className="flex items-center gap-2">
-            <button onClick={(e) => { e.stopPropagation(); onRead(k); }} className="text-blue-500 hover:text-blue-700 transition-colors shrink-0 bg-blue-50 p-1.5 rounded-lg shadow-sm"><Search size={14}/></button>
-            <button onClick={(e) => { e.stopPropagation(); onDelete(k.id); }} className="text-slate-200 hover:text-red-500 transition-colors shrink-0 p-1.5"><Trash2 size={14}/></button>
+            <button onClick={(e) => { e.stopPropagation(); onRead(k); }} className={`transition-colors shrink-0 p-1.5 rounded-lg shadow-sm ${isChatImprint ? 'bg-blue-100 text-blue-600 hover:text-blue-800' : 'bg-amber-100 text-amber-600 hover:text-amber-800'}`}><Search size={14}/></button>
+            <button onClick={(e) => { e.stopPropagation(); onDelete(k.id); }} className="text-slate-400 hover:text-white hover:bg-red-500 transition-all shrink-0 bg-white border border-slate-200 p-1.5 rounded-lg shadow-sm"><Trash2 size={14}/></button>
           </div>
         )}
       </div>
       <p className="text-sm font-bold text-slate-700 leading-relaxed mb-6 line-clamp-3 h-[60px] overflow-hidden">{previewContent}</p>
-      <div className={`mt-auto pt-4 border-t flex flex-col gap-3 ${themeClasses.divider}`}>
+            <div className={`mt-auto pt-4 border-t flex flex-col gap-3 ${themeClasses.divider}`}>
         <div className="flex justify-between items-center px-1">
           <span className={`text-[8px] font-black uppercase tracking-tight ${themeClasses.totalText}`}>Total {String(totalUnits)} Units</span>
           <div className={`flex items-center gap-2 bg-white/50 rounded-full px-1.5 py-0.5 border shadow-sm ${themeClasses.navBg}`}>
@@ -1417,6 +1419,9 @@ const HumanOSApp = () => {
       if (k.source === 'DOC_IMPORT') return sum + 20;
       if (k.source === 'Manual') return sum + 5;
       if (k.source === 'AUTO_CHAT_IMPRINT') return sum + 1;
+      // 💡 [패치 2] 수동 각인(CHAT_IMPRINT) 명성치 1점 부여 로직 추가
+      if (k.source === 'CHAT_IMPRINT') return sum + 1; 
+      
       return sum + 10;
     }, 0);
     return knowledgeKP + Number(answers || 0);
