@@ -963,7 +963,8 @@ const CommitteeView = ({ ctx }) => {
            <div key={m.id || i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} w-full animate-in slide-in-from-top-2`}>
              <div className={`p-4 rounded-2xl shadow-sm relative break-words ${m.role === 'user' ? 'max-w-[62%] bg-slate-900 text-white rounded-tr-none shadow-md' : 'max-w-[95%] bg-slate-50 text-slate-800 rounded-tl-none border border-blue-100 shadow-sm'}`}>
                <div className="leading-[1.6] whitespace-pre-wrap font-bold" style={{ fontSize: `${profile?.chatFontSize || 10}px` }}>{String(m.content)}</div>
-               
+
+// ... existing code ...
                {m.role === 'assistant' && m.tokenUsage && (
                  <div className="mt-2 flex items-center gap-2 text-[8.5px] font-black text-slate-400 bg-white/60 px-2 py-1 rounded-lg w-fit border border-slate-200/50">
                    <span className="text-blue-500">IN: {m.tokenUsage.promptTokenCount}</span>
@@ -975,9 +976,15 @@ const CommitteeView = ({ ctx }) => {
                <div className="mt-4 pt-3 border-t border-slate-200/30 flex justify-between items-center gap-2">
                  <div className="flex gap-2">
                    {m.role === 'assistant' && (
-                     <button onClick={() => handleTTS(m.content, m.id)} className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[8px] border transition-all ${isSpeaking === m.id ? 'bg-amber-100 text-amber-600 border-amber-200 shadow-inner' : 'bg-white text-slate-500 shadow-sm'}`}>
-                       <Volume2 size={12}/> {isSpeaking === m.id ? '중지' : '듣기'}
-                     </button>
+                     <>
+                       <button onClick={() => handleTTS(m.content, m.id)} className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[8px] border transition-all ${isSpeaking === m.id ? 'bg-amber-100 text-amber-600 border-amber-200 shadow-inner' : 'bg-white text-slate-500 shadow-sm'}`}>
+                         <Volume2 size={12}/> {isSpeaking === m.id ? '중지' : '듣기'}
+                       </button>
+                       {/* 💡 [신규] 위원회 답변 버블에 1-Click 각인 버튼 추가 */}
+                       <button onClick={() => ctx.actions.handleChatImprint(m.content)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[8px] border transition-all bg-white text-blue-600 border-blue-200 shadow-sm hover:bg-blue-50 active:scale-95 font-black">
+                         <Brain size={12}/> 각인
+                       </button>
+                     </>
                    )}
                  </div>
                  <button onClick={() => handleDeleteRoomMessage(m.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1.5 rounded-lg"><Trash2 size={13}/></button>
@@ -987,6 +994,8 @@ const CommitteeView = ({ ctx }) => {
          ))}
       </div>
       <div className="fixed bottom-20 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm z-[50]"><div className="max-w-5xl mx-auto flex items-center gap-2 bg-white p-1 rounded-full shadow-xl border h-[42px] px-2 border-blue-100 font-black text-slate-900">
+
+
       <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="토론 안건 입력..." className="flex-1 px-4 text-[13px] outline-none bg-transparent" disabled={isTyping} />
       <span className="text-[9px] font-black tracking-tighter uppercase mr-2 text-amber-500/70 border border-amber-500/30 px-2 py-0.5 rounded-md bg-amber-50/50">
         {ctx.state.engineConfig.model.includes('flash') ? '3.6 FLASH' : '3.1 PRO'}
@@ -1804,24 +1813,20 @@ ${conversationTemplate}
 (구체적인 3단계 실행 로드맵 및 결론 요약)`;
           // 💡👆 여기까지 교체 완료
         }
-  
+
         systemInstructionText = `${chairmanPrompt} [하이브리드 추론 가이드]: 제공된 'KNOWLEDGE_POOL' 지식 최우선 근거.\n\n${formatGuide}\n\n'([node 숫자])' 표기 절대 금지, **강조**만 사용.\n\n[KNOWLEDGE_POOL]\n${K_POOL.slice(0, 35000)}`;
       }
       const res = await FirebaseServices.callGeminiEngine({ contents: [{ parts: [{ text: currentInput }] }], systemInstruction: { parts: [{ text: systemInstructionText }] } }, engineConfig);
       const content = String(res.candidates?.[0]?.content?.parts?.[0]?.text || "응답 지연.");
-
       const tokenUsage = res.usageMetadata || null; 
       const asstMsgId = Date.now() + 1;
 
-      if (viewMode !== 'landing' && user) { 
-// ...
-      }
+      // 💡 [삭제 완료] 기존에 이 자리에 길게 있던 "자동 각인(AUTO_CHAT_IMPRINT)" 로직을 완전히 제거했습니다.
   
       if (viewMode === 'landing' && targetLandingUid) {
         // 💡👇 교체: 랜딩페이지 방문자의 질문을 DB에 저장하는 코드를 복구합니다.
         const qnaCol = collection(db, 'artifacts', appId, 'users', targetLandingUid, 'landingQnA');
         await addDoc(qnaCol, { question: currentInput, answer: content, timestamp: asstMsgId });
-        // 💡👆 교체 완료
       } else if (user) {
         const roomCol = collection(db, 'artifacts', appId, 'users', user.uid, 'roomMessages');
         // 💡 사용자 질문 저장은 위로 올렸으므로, 여기서는 AI가 내뱉은 답변만 저장합니다.
@@ -1855,11 +1860,38 @@ ${conversationTemplate}
     window.speechSynthesis.speak(utterance); setIsSpeaking(id);
   }, [isSpeaking, ttsGender]);
 
-// ... existing code ...
   const handleImprintChat = (content) => {
     if (Number(profile.userCoins || 0) < 10) { triggerToast("AC가 부족하여 각인할 수 없습니다."); return; }
     setManualText(content); setManualTag("#위원회_합의"); setShowImprintModal(true);
   };
+
+  // 💡👇 [신규 패치] 1-Click 수동 채팅 각인 함수 (1 AC 소모, 즉시 My Avatar 지식으로 저장)
+  const handleChatImprint = async (content) => {
+    if (!user || user.isAnonymous) { triggerToast("구글 로그인이 필요합니다."); return; }
+    if (Number(profile.userCoins || 0) < 1) { triggerToast("AC가 부족합니다 (1 AC 필요)."); return; }
+    
+    const success = await deductAC(1);
+    if (!success) return;
+
+    try {
+      const batch = writeBatch(db);
+      const kRef = doc(collection(db, 'artifacts', appId, 'users', user.uid, 'knowledge'));
+      batch.set(kRef, { 
+          content: content.substring(0, 100000), 
+          domainIdx: 7, 
+          masterName: profile?.userName || '사용자', 
+          source: "CHAT_IMPRINT", 
+          hashtag: `#지능각인_${String(Date.now()).slice(-4)}`, 
+          timestamp: Date.now() 
+      });
+      batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'finance', 'revenue'), { importRevenue: increment(1) }, { merge: true });
+      await batch.commit();
+      triggerToast("답변이 마스터의 지능으로 각인되었습니다! ✨ (-1 AC)");
+    } catch (err) {
+      triggerToast("각인 저장에 실패했습니다.");
+    }
+  };
+  // 💡👆 신규 패치 완료
 
   // 💡 [패치 3] 아바타 거래 시스템 수익(수수료) 기록을 복구합니다.
   const handleSubscribeAvatarFromMarket = async (avatar, type) => {
@@ -1888,6 +1920,7 @@ ${conversationTemplate}
       triggerToast("거래 처리 중 오류가 발생했습니다. (보안 규칙 확인 필요)"); 
     }
   };
+
   const handleUnregisterAvatar = async () => {
     if (!user) return;
     try {
@@ -1900,10 +1933,11 @@ ${conversationTemplate}
     }
   };
 
-
   const ctx = {
     state: { user, profile, activeTab, activeDomainIdx, domains, ttsGender, messages, currentAgenda, isTyping, isSpeaking, chatInput, joinedMasters, subscribedAvatars, useChairmanContext, marketRoom, marketSearchTerm, filteredMarketPool, pendingTransactions, knowledgeList, isAvatarRegistered, engineConfig, systemRevenue, selectedTfCategoryId, ideaSpices, activeMembers },
-    actions: { setActiveTab, setActiveDomainIdx, setTtsGender, setSelectedTfCategoryId, setCurrentAgenda, setIsSpeaking, setChatInput, triggerToast, handleSendMessage, handleTTS, handleDeleteRoomMessage, setProfile, handleSaveProfile, setEngineConfig, setDomains, handleLogout, handleDeepDive, setExpertChatTarget, handleDeleteQna, handleRegisterAvatar, handleUnregisterAvatar, deductAC, setDetailKnowledge, handleChargeAC, handleSubscribeAvatarFromMarket, setMarketRoom, setMarketSearchTerm, setPendingTransactions, setShowImprintModal, setShowQnaModal, handleBuildAvatar, setShowRegisterFeeModal, setJoinedMasters, setUseChairmanContext, setPreviewExpert, setExpertGenomeSlot, setIdeaSpices, setActiveMembers },
+    // 💡👇 교체: 맨 끝에 handleChatImprint 가 추가되었습니다!
+    actions: { setActiveTab, setActiveDomainIdx, setTtsGender, setSelectedTfCategoryId, setCurrentAgenda, setIsSpeaking, setChatInput, triggerToast, handleSendMessage, handleTTS, handleDeleteRoomMessage, setProfile, handleSaveProfile, setEngineConfig, setDomains, handleLogout, handleDeepDive, setExpertChatTarget, handleDeleteQna, handleRegisterAvatar, handleUnregisterAvatar, deductAC, setDetailKnowledge, handleChargeAC, handleSubscribeAvatarFromMarket, setMarketRoom, setMarketSearchTerm, setPendingTransactions, setShowImprintModal, setShowQnaModal, handleBuildAvatar, setShowRegisterFeeModal, setJoinedMasters, setUseChairmanContext, setPreviewExpert, setExpertGenomeSlot, setIdeaSpices, setActiveMembers, handleChatImprint },
+    // 💡👆 교체 완료
     refs: { fileInputRef, dtwinFileInputRef, chatTopRef },
     utils: { getDisplayNodes }
   };
@@ -2326,6 +2360,17 @@ ${conversationTemplate}
                        </div>
                      )}
 
+                     {/* 💡 [신규] 1:1 채팅 답변에도 듣기 및 각인 버튼 추가 */}
+                     {m.role === 'assistant' && (
+                       <div className="mt-3 pt-3 border-t border-blue-200/50 flex gap-2">
+                         <button onClick={() => handleTTS(m.content, m.id)} className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[8px] border transition-all ${isSpeaking === m.id ? 'bg-amber-100 text-amber-600 border-amber-200 shadow-inner' : 'bg-white text-slate-500 shadow-sm'}`}>
+                           <Volume2 size={12}/> {isSpeaking === m.id ? '중지' : '듣기'}
+                         </button>
+                         <button onClick={() => handleChatImprint(m.content)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[8px] border transition-all bg-white text-blue-600 border-blue-200 shadow-sm hover:bg-blue-50 active:scale-95 font-black">
+                           <Brain size={12}/> 각인
+                         </button>
+                       </div>
+                     )}
 
                    </div>
                  </div>
