@@ -1513,20 +1513,6 @@ const HumanOSApp = () => {
     }
   };
 
-  const handleFileUpload = (e) => {
-    if (!user) return;
-    try {
-      if (profile.userAlias) {
-        const cleanAlias = String(profile.userAlias).trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-        const aliasDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'aliases', cleanAlias));
-        if (aliasDoc.exists() && aliasDoc.data().ownerUid !== user.uid) { triggerToast("이미 사용 중인 별칭입니다."); return; }
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'aliases', cleanAlias), { ownerUid: user.uid, timestamp: Date.now() });
-      }
-      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile'), { profile, domains, engineConfig }, { merge: true });
-      triggerToast("정보가 저장되었습니다.");
-    } catch (e) { triggerToast("저장 오류"); }
-  };
-
 const handleFileUpload = (e) => {
     const file = e.target.files[0]; if (!file || !user) return;
     deductAC(10).then(success => {
