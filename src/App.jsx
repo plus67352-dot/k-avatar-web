@@ -18,7 +18,7 @@ import {
 // ============================================================================
 // 1. CONSTANTS LAYER
 // ============================================================================
-const APP_VERSION = "F77.11.65 (K-Avatar Master Edition)";
+const APP_VERSION = "F77.11.66 (K-Avatar)";
 
 // 👇 환경 변수 적용
 const firebaseConfig = {
@@ -1483,26 +1483,37 @@ const HumanOSApp = () => {
     } catch (error) { triggerToast("결제 모듈 로드 실패."); }
   };
 
-  const handleCompleteOnboarding = async () => {
+  const handleSaveProfile = async () => {
     if (!user) return;
-    if (!onboardingData.agreed) { triggerToast("이용약관에 동의해야 합니다."); return; }
-    const cleanAlias = String(onboardingData.alias).trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (cleanAlias.length < 3) { triggerToast("별칭은 3자 이상이어야 합니다."); return; }
-    setIsOnboardingLoading(true);
     try {
-      const aliasDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'aliases', cleanAlias);
-      const aliasDoc = await getDoc(aliasDocRef);
-      if (aliasDoc.exists()) { triggerToast("이미 사용 중인 별칭입니다."); setIsOnboardingLoading(false); return; }
-      const batch = writeBatch(db);
-      batch.set(aliasDocRef, { ownerUid: user.uid, timestamp: Date.now() });
-      const initialProfile = { userName: user.displayName || '신규 마스터', userCoins: 1000, userAlias: cleanAlias, userIntro: 'AI이 거대화에 맞서 Human OS로 재탄생한 meta-DNA 마스터입니다.', userPhoto: user.photoURL || '', answerCount: 0 };
-      const userRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile');
-      batch.set(userRef, { profile: initialProfile, engineConfig: { model: "gemini-3.6-flash", version: "v1beta" } }, { merge: true });
-      await batch.commit(); setProfile(initialProfile); setShowOnboardingModal(false); triggerToast("마스터 임명 완료!");
-    } catch (e) { triggerToast("처리 중 오류 발생"); } finally { setIsOnboardingLoading(false); }
+      if (profile.userAlias) {
+        const cleanAlias = String(profile.userAlias).trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+        const aliasDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'aliases', cleanAlias));
+        
+        if (aliasDoc.exists()) {
+          // 남이 쓰고 있는 별칭이라면 차단
+          if (aliasDoc.data().ownerUid !== user.uid) { 
+            triggerToast("이미 사용 중인 별칭입니다."); 
+            return; 
+          }
+          // 💡 [버그 픽스] 이미 내가 선점한 별칭과 똑같다면 굳이 다시 덮어쓰기(update)를 시도하지 않고 조용히 넘어갑니다.
+          // (보안 규칙에서 update를 막아두었기 때문입니다)
+        } else {
+          // 아무도 안 쓰는 새로운 별칭일 때만 새로 생성(create) 합니다.
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'aliases', cleanAlias), { ownerUid: user.uid, timestamp: Date.now() });
+        }
+      }
+      
+      // 별칭 처리가 무사히 끝났으므로, 이제 내 프로필(소개글, 사진 등)을 저장합니다.
+      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile'), { profile, domains, engineConfig }, { merge: true });
+      triggerToast("정보가 저장되었습니다.");
+    } catch (e) { 
+      console.error(e);
+      triggerToast("저장 오류가 발생했습니다."); 
+    }
   };
 
-  const handleSaveProfile = async () => {
+  const handleFileUpload = (e) => {
     if (!user) return;
     try {
       if (profile.userAlias) {
