@@ -2473,9 +2473,40 @@ ${conversationTemplate}
 };
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+  const [fadeSplash, setFadeSplash] = useState(false);
+
+  useEffect(() => {
+    // 2초 동안 스플래시 이미지 표시 후 페이드아웃 시작
+    const fadeTimer = setTimeout(() => {
+      setFadeSplash(true);
+    }, 2000); 
+    
+    // 0.7초의 페이드아웃 애니메이션 대기 후 DOM에서 완전히 제거
+    const removeTimer = setTimeout(() => {
+      setShowSplash(false);
+    }, 2700);
+
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(removeTimer);
+    };
+  }, []);
+
   return (
     <>
       <SharedStyles />
+      
+      {/* 💡 [신규 패치]: 앱 최초 실행 시 2초간 보여지는 스플래시(Intro) 포스터 화면 */}
+      {showSplash && (
+        <div className={`fixed inset-0 z-[100000] bg-[#0A0F1C] flex items-center justify-center transition-opacity duration-700 ease-in-out ${fadeSplash ? 'opacity-0' : 'opacity-100'}`}>
+          <img 
+            src="/image_0608b9.jpg" 
+            className="w-full h-full max-w-[450px] object-contain animate-in fade-in zoom-in-[0.98] duration-1000" 
+            alt="K-Avatar Splash Intro" 
+          />
+        </div>
+      )}
       <HumanOSApp />
     </>
   );
